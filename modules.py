@@ -1,12 +1,18 @@
 import tensorflow as tf
 
 
-def scaled_dot_product_attention(q, k, v):
+def scaled_dot_product_attention(q, k, v, mask=None):
     """Compute the scaled dot product attention according to Attention(Q,K,V) = softmax(QK^T/sqrt(d_model))V"""
     d_model = tf.cast(tf.shape(q)[-1], tf.float32)
     qkt = tf.matmul(q, k, transpose_b=True)  # QK^T
 
-    attention_weights = tf.nn.softmax(qkt / tf.sqrt(d_model))
+    attention_logits = qkt / tf.sqrt(d_model)
+
+    # add mask
+    if mask:
+        attention_logits += mask * -1e9  # add -infinity to saturate the softmax to 0
+
+    attention_weights = tf.nn.softmax(attention_logits)
 
     # compute attention values
     attention_values = tf.matmul(attention_weights, v)
@@ -20,9 +26,25 @@ def pad_mask(x):
     """
 
     mask = tf.cast(tf.equal(0, x), tf.float32)
-    mask = mask[:,tf.newaxis, tf.newaxis, :]
+
+    # This works because the broadcasting defacto causes the mask to operate on elements of the attention matrix that
+    # corresponds to the weights each word attends to the padding words.
+    # That is, the broadcasting masks the A[x, pad] of the attention matrix.
+    mask = mask[:, tf.newaxis, tf.newaxis, :]
 
     return mask
+
+
+def lookahead_mask(x):
+    """
+    Create mask to prevent the decoder from looking on the yet ungenerated sequence. Input x is assumed to be of shape
+    [batch_size, sequence_length] as its before embedding.
+    """
+    batch_size = tf.shape(x)[0]
+    seq_length = tf.shape(x)[1]
+
+    mask = tf.linalg.band_part(tf.ones(batch_size, seq_length), 0, -1)  # band(0, -1) is lower triangle part
+    return  mask
 
 
 class MultiHeadAttention:
@@ -66,7 +88,7 @@ class MultiHeadAttention:
 
         return X_split
 
-    def __call__(self, q, k, v):
+    def __call__(self, q, k, v, mask=None):
         """Compute the Multy Head Attention of Q, K, V"""
         batch_size = q.shape[0]
 
@@ -81,7 +103,7 @@ class MultiHeadAttention:
         v_split = self._split_heads(v)
 
         # compute attention
-        attention = scaled_dot_product_attention(q_split, k_split, v_split)
+        attention = scaled_dot_product_attention(q_split, k_split, v_split, mask=mask)
 
         # concatenate and project
         concat_attention = tf.transpose(attention, perm=[0, 2, 1, 3])  # reorder to [batch_size, seq_length, num_heads, depth]
@@ -120,9 +142,9 @@ class EncoderLayer:
         self._mha_norm = tf.keras.layers.LayerNormalization()  # multihead attention LayerNorm
         self._ffl_norm = tf.keras.layers.LayerNormalization()  # feed forward LayerNorm
 
-    def __call__(self, x, training):
+    def __call__(self, x, pad_mask, training):
         # multihead attention
-        mha_output = self._mha(x, x, x)  # TODO: add padd mask
+        mha_output = self._mha(x, x, x, pad_mask)
         mha_output = self._mha_dropout(mha_output, training=training)
 
         # add mha to input and norm
@@ -181,6 +203,7 @@ class DecoderLayer:
 
 
 if __name__ == '__main__':
+    print(tf.__version__)
     temp_k = tf.constant([[10, 0, 0],
                           [0, 10, 0],
                           [0, 0, 10],
@@ -202,7 +225,7 @@ if __name__ == '__main__':
     ffl = FeedForwardLayer(8, 200)
     print(ffl(x).shape)
     enc = EncoderLayer(8, 4, 100, 0.1)
-    print(enc(x, True).shape)
+    print(enc(x, None, True).shape)
     dec = DecoderLayer(8, 4, 100, 0.1)
     print(dec(x, x, True).shape)
     c = tf.constant([
@@ -214,3 +237,4 @@ if __name__ == '__main__':
     d = tf.random.uniform((2,2,2,2))
     e = d + pad_mask(c)
     print(e[1, 1, 1, :])
+    print(tf.executing_eagerly())
