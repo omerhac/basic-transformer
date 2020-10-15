@@ -14,6 +14,17 @@ def scaled_dot_product_attention(q, k, v):
     return attention_values
 
 
+def pad_mask(x):
+    """Create a tensor to mask pad tokens. Input x is assumed to be of shape [batch_size, sequence_length]
+    as its before embedding.
+    """
+
+    mask = tf.cast(tf.equal(0, x), tf.float32)
+    mask = mask[:,tf.newaxis, tf.newaxis, :]
+
+    return mask
+
+
 class MultiHeadAttention:
     """Multi Head Attention layer as in MHA(Q,K,V) = concat(attention_head1, attention_head2, .., attention_headn)Wc,
     where attention_headi = attention(QWq, KWk, VWv). Wc, Wq, Wk and Wv are projections to d_c, d_q, d_k and d_v.
@@ -109,17 +120,17 @@ class EncoderLayer:
         self._mha_norm = tf.keras.layers.LayerNormalization()  # multihead attention LayerNorm
         self._ffl_norm = tf.keras.layers.LayerNormalization()  # feed forward LayerNorm
 
-    def __call__(self, x):
+    def __call__(self, x, training):
         # multihead attention
         mha_output = self._mha(x, x, x)  # TODO: add padd mask
-        mha_output = self._mha_dropout(mha_output)
+        mha_output = self._mha_dropout(mha_output, training=training)
 
         # add mha to input and norm
         s1 = self._mha_norm(x + mha_output)  # sublayer 1 output
 
         # apply feed forward layer
         ffl_output = self._ff(s1)
-        ffl_output = self._ffl_dropout(ffl_output)
+        ffl_output = self._ffl_dropout(ffl_output, training=training)
 
         # add ffl to s1 and norm
         s2 = self._ffl_norm(s1 + ffl_output)
@@ -143,28 +154,30 @@ class DecoderLayer:
         self._encoder_mha_norm = tf.keras.layers.LayerNormalization()
         self._ffl_norm = tf.keras.layers.LayerNormalization()
 
-    def __call__(self, prev_dec_output, enc_output):
+    def __call__(self, prev_dec_output, enc_output, training):
         """Decode next output from previous decoder output and the encoder output for this moment"""
         # masked multihead attention
         masked_mha = self._mha(prev_dec_output, prev_dec_output, prev_dec_output)  # TODO: add leftward ban mask
-        masked_mha = self._masked_mha_dropout(masked_mha)
+        masked_mha = self._masked_mha_dropout(masked_mha, training=training)
 
         # add and norm
         s1 = self._masked_mha_norm(masked_mha + prev_dec_output)
 
         # encoder multihead attention
         encoder_mha = self._mha(s1, enc_output, enc_output)  # TODO: add pad mask?
-        encoder_mha = self._encoder_mha_dropout(encoder_mha)
+        encoder_mha = self._encoder_mha_dropout(encoder_mha, training=training)
 
         # add and norm
         s2 = self._encoder_mha_norm(encoder_mha + s1)
 
         # feed forward layer
         feed_forward = self._ffl(s2)
-        feed_forward = self._ffl_dropout(feed_forward)
+        feed_forward = self._ffl_dropout(feed_forward, training=training)
 
         # add and norm
         s3 = self._ffl_norm(feed_forward + s2)
+
+        return s3
 
 
 if __name__ == '__main__':
@@ -189,5 +202,15 @@ if __name__ == '__main__':
     ffl = FeedForwardLayer(8, 200)
     print(ffl(x).shape)
     enc = EncoderLayer(8, 4, 100, 0.1)
-    print(enc(x).shape)
-
+    print(enc(x, True).shape)
+    dec = DecoderLayer(8, 4, 100, 0.1)
+    print(dec(x, x, True).shape)
+    c = tf.constant([
+        [0, 1],
+        [1, 0]
+    ])
+    print(c)
+    print(pad_mask(c))
+    d = tf.random.uniform((2,2,2,2))
+    e = d + pad_mask(c)
+    print(e[1, 1, 1, :])
