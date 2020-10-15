@@ -97,7 +97,9 @@ class FeedForwardLayer:
 
 class EncoderLayer:
     """One encoder layer. Includes multi head attention and feed forwards sublayers. each sublayer output is:
-    output = LayerNorm(dropout(sublayer(sublayer_input)) + sublayer_input)"""
+    output = LayerNorm(dropout(sublayer(sublayer_input)) + sublayer_input)
+    """
+
     def __init__(self, d_model, attention_heads, d_feed_forward, dropout_rate):
         self._mha = MultiHeadAttention(attention_heads, d_model)
         self._ff = FeedForwardLayer(d_model, d_feed_forward)
@@ -109,7 +111,7 @@ class EncoderLayer:
 
     def __call__(self, x):
         # multihead attention
-        mha_output = self._mha(x, x, x)
+        mha_output = self._mha(x, x, x)  # TODO: add padd mask
         mha_output = self._mha_dropout(mha_output)
 
         # add mha to input and norm
@@ -123,6 +125,46 @@ class EncoderLayer:
         s2 = self._ffl_norm(s1 + ffl_output)
 
         return s2
+
+
+class DecoderLayer:
+    """One decoder layer. Includes multihead attention over encoder outputs, masked multihead attention over previous
+    decoder outputs and feed forward sublayers.
+    """
+
+    def __init__(self, d_model, attention_heads, d_feed_forward, dropout_rate):
+        self._d_model = d_model
+        self._mha = MultiHeadAttention(attention_heads, self._d_model)
+        self._ffl = FeedForwardLayer(self._d_model, d_feed_forward)
+        self._masked_mha_dropout = tf.keras.layers.Dropout(dropout_rate)
+        self._encoder_mha_dropout = tf.keras.layers.Dropout(dropout_rate)
+        self._ffl_dropout = tf.keras.layers.Dropout(dropout_rate)
+        self._masked_mha_norm = tf.keras.layers.LayerNormalization()
+        self._encoder_mha_norm = tf.keras.layers.LayerNormalization()
+        self._ffl_norm = tf.keras.layers.LayerNormalization()
+
+    def __call__(self, prev_dec_output, enc_output):
+        """Decode next output from previous decoder output and the encoder output for this moment"""
+        # masked multihead attention
+        masked_mha = self._mha(prev_dec_output, prev_dec_output, prev_dec_output)  # TODO: add leftward ban mask
+        masked_mha = self._masked_mha_dropout(masked_mha)
+
+        # add and norm
+        s1 = self._masked_mha_norm(masked_mha + prev_dec_output)
+
+        # encoder multihead attention
+        encoder_mha = self._mha(s1, enc_output, enc_output)  # TODO: add pad mask?
+        encoder_mha = self._encoder_mha_dropout(encoder_mha)
+
+        # add and norm
+        s2 = self._encoder_mha_norm(encoder_mha + s1)
+
+        # feed forward layer
+        feed_forward = self._ffl(s2)
+        feed_forward = self._ffl_dropout(feed_forward)
+
+        # add and norm
+        s3 = self._ffl_norm(feed_forward + s2)
 
 
 if __name__ == '__main__':
