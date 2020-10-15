@@ -1,2 +1,4 @@
 numpy
+tensorflow==2.1.0
 pandas
+tensorflow-datasets

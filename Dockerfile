@@ -1,15 +1,12 @@
-FROM ubuntu:latest
+FROM python:3.7
 
-RUN apt-get update -y
-
-RUN apt-get install -y python3-pip
+RUN apt -y update
 
 COPY . /app
 
 WORKDIR /app
 
-RUN pip3 install --upgrade pip
+RUN pip install --upgrade pip
 
-RUN pip3 install -r requirements.txt
+RUN pip install -r requirements.txt
 
-RUN python3 -m pip --no-cache-dir install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow_cpu-2.1.0-cp37-cp37m-manylinux2010_x86_64.whl

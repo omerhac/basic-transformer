@@ -9,7 +9,7 @@ def scaled_dot_product_attention(q, k, v, mask=None):
     attention_logits = qkt / tf.sqrt(d_model)
 
     # add mask
-    if mask:
+    if mask is not None:
         attention_logits += mask * -1e9  # add -infinity to saturate the softmax to 0
 
     attention_weights = tf.nn.softmax(attention_logits)
@@ -40,11 +40,12 @@ def lookahead_mask(x):
     Create mask to prevent the decoder from looking on the yet ungenerated sequence. Input x is assumed to be of shape
     [batch_size, sequence_length] as its before embedding.
     """
-    batch_size = tf.shape(x)[0]
     seq_length = tf.shape(x)[1]
 
-    mask = tf.linalg.band_part(tf.ones(batch_size, seq_length), 0, -1)  # band(0, -1) is lower triangle part
-    return  mask
+    mask = tf.linalg.band_part(tf.ones((seq_length, seq_length)), 0, -1) - tf.linalg.band_part(tf.ones((seq_length, seq_length)), 0, 0)
+    # band(0, -1) is lower triangle part and band(0,0) is diagonal
+
+    return mask
 
 
 class MultiHeadAttention:
@@ -176,17 +177,17 @@ class DecoderLayer:
         self._encoder_mha_norm = tf.keras.layers.LayerNormalization()
         self._ffl_norm = tf.keras.layers.LayerNormalization()
 
-    def __call__(self, prev_dec_output, enc_output, training):
+    def __call__(self, prev_dec_output, enc_output, pad_mask, lookahead_mask, training):
         """Decode next output from previous decoder output and the encoder output for this moment"""
         # masked multihead attention
-        masked_mha = self._mha(prev_dec_output, prev_dec_output, prev_dec_output)  # TODO: add leftward ban mask
+        masked_mha = self._mha(prev_dec_output, prev_dec_output, prev_dec_output, mask=lookahead_mask)
         masked_mha = self._masked_mha_dropout(masked_mha, training=training)
 
         # add and norm
         s1 = self._masked_mha_norm(masked_mha + prev_dec_output)
 
         # encoder multihead attention
-        encoder_mha = self._mha(s1, enc_output, enc_output)  # TODO: add pad mask?
+        encoder_mha = self._mha(s1, enc_output, enc_output, mask=pad_mask)
         encoder_mha = self._encoder_mha_dropout(encoder_mha, training=training)
 
         # add and norm
@@ -225,16 +226,7 @@ if __name__ == '__main__':
     ffl = FeedForwardLayer(8, 200)
     print(ffl(x).shape)
     enc = EncoderLayer(8, 4, 100, 0.1)
-    print(enc(x, None, True).shape)
+    pad_mask = pad_mask(tf.linalg.band_part(tf.ones((128, 10)), 0, 0))
+    print(enc(x, pad_mask, True).shape)
     dec = DecoderLayer(8, 4, 100, 0.1)
-    print(dec(x, x, True).shape)
-    c = tf.constant([
-        [0, 1],
-        [1, 0]
-    ])
-    print(c)
-    print(pad_mask(c))
-    d = tf.random.uniform((2,2,2,2))
-    e = d + pad_mask(c)
-    print(e[1, 1, 1, :])
-    print(tf.executing_eagerly())
+    print(dec(x, x, pad_mask, None, True).shape)
