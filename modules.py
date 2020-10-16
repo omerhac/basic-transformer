@@ -292,14 +292,15 @@ def get_positional_encodings(x):
 class Transformer:
     """Transformer model"""
 
-    def __init__(self, vocab_size, d_model=512, n_layers=6, attention_heads=8, d_forward_layer=2045, dropout_rate=0.1,
-                 encoder=None, decoder=None):
+    def __init__(self, vocab_size, target_vocab_size, d_model=512, n_layers=6, attention_heads=8, d_forward_layer=2045,
+                 dropout_rate=0.1, encoder=None, decoder=None):
         """
         Init the model with the default parameters from the paper.
         If a trained encoder / decoder is provided the model will not generate a new one.
 
         Args:
-            vocab_size: size of model vocabulary
+            vocab_size: size of input language vocabulary
+            target_vocab_size: size of output language vocabulary
             d_model: dimension of input embeddings
             n_layers: number of encoder / decoder layers
             attention_heads: number of heads for multihead attention. (how many times to split d_model)
@@ -321,13 +322,18 @@ class Transformer:
         self._input_embedding = tf.keras.layers.Embedding(vocab_size, d_model)
 
         # create end linear projection
-        self._linear_projection = tf.keras.layers.Dense(vocab_size, activation='linear')
+        self._linear_projection = tf.keras.layers.Dense(target_vocab_size, activation='linear')
 
     def __call__(self, x, prev_dec_output, training):
+        # embedd x and previous decoder output
+        x_embedd = self._input_embedding(x)
+        prev_dec_output_embedd = self._input_embedding(prev_dec_output)
+
         # get positional encodings
-        inp_positional_enc = get_positional_encodings(x)
-        out_positional_enc = get_positional_encodings(prev_dec_output)
-        x = x + inp_positional_enc
+        inp_positional_enc = get_positional_encodings(x_embedd)
+        out_positional_enc = get_positional_encodings(prev_dec_output_embedd)
+        x_embedd = x_embedd + inp_positional_enc
+        prev_dec_output_embedd = prev_dec_output_embedd + out_positional_enc
 
         # get masks
         inp_p_mask = pad_mask(x)
@@ -336,16 +342,17 @@ class Transformer:
         dec_combined_mask = tf.maximum(out_p_mask, la_mask)  # combine the lookahead and padding mask for the input of the decoder
 
         # apply encoder
-        encoder_output = self._encoder(x, inp_p_mask, training=training)
+        encoder_output = self._encoder(x_embedd, inp_p_mask, training=training)
 
         # apply decoder
-        decoder_output = self._decoder(prev_dec_output, encoder_output, out_p_mask, dec_combined_mask, training=training)
+        decoder_output = self._decoder(prev_dec_output_embedd, encoder_output, out_p_mask,
+                                       dec_combined_mask, training=training)
 
         # apply linear layer and softmax
         output_logits = self._linear_projection(decoder_output)
         output_probas = tf.nn.softmax(output_logits)
 
-        return  output_probas
+        return output_probas
 
 
 if __name__ == '__main__':
@@ -384,3 +391,7 @@ if __name__ == '__main__':
     print(d(x, x, p, lam, True).shape)
     pos_enc = get_positional_encodings(tf.ones((2, 50, 512)))
     print(pos_enc.shape)
+
+    transformer = Transformer(20000, 30000)
+    x = tf.ones((128, 10))
+    print(transformer(x, x, True).shape)
