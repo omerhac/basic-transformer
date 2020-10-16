@@ -222,8 +222,31 @@ class Encoder:
         current_layer_output = x
 
         # move x through all layers
-        for layer in range(self._n_layers):
-            current_layer_output = self._layers[layer](current_layer_output, pad_mask, training=training)
+        for layer in self._layers:
+            current_layer_output = layer(current_layer_output, pad_mask, training=training)
+
+        return current_layer_output
+
+
+class Decoder:
+    """Transformer decoder"""
+
+    def __init__(self, d_model, n_layers, attention_heads, d_forward_layer, dropout_rate):
+        self._d_model = d_model
+        self._attention_heads = attention_heads
+        self.d_forward_layer = d_forward_layer
+        self._n_layers = n_layers
+
+        # initiate n_layers encoder layers
+        self._layers = [DecoderLayer(self._d_model, self._attention_heads, self.d_forward_layer, dropout_rate)
+                        for _ in range(n_layers)]
+
+    def __call__(self, prev_dec_output, enc_output, pad_mask, lookahead_mask, training):
+        current_layer_output = prev_dec_output
+
+        # move the previous decoder output through all the layers. encoder output is injected to every layer
+        for layer in self._layers:
+            current_layer_output = layer(current_layer_output, enc_output, pad_mask, lookahead_mask, training=training)
 
         return current_layer_output
 
@@ -260,3 +283,5 @@ if __name__ == '__main__':
     print(m[0, 0, :, :])
     e = Encoder(8, 6, 4, 100, 0.1)
     print(e(x, p, True).shape)
+    d = Decoder(8, 6, 4, 100, 0.1)
+    print(d(x, x, p, lam, True).shape)
