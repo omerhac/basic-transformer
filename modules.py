@@ -251,6 +251,32 @@ class Decoder:
         return current_layer_output
 
 
+def get_positional_encodings(x):
+    """Return a tensor with positional encodings for the whole batch"""
+    # get shapes
+    batch_size = tf.shape(x)[0]
+    seq_length = tf.shape(x)[1]
+    d_model = tf.shape(x)[2]
+
+    # create positional tensor
+    pos = tf.ones((batch_size, seq_length))
+    pos = tf.cumsum(pos, axis=1, exclusive=True)
+
+    # replicate position to d_model dimensions
+    pos = pos[:, :, tf.newaxis]
+    pos = tf.tile(pos, [1, 1, d_model])
+
+    # create power tensor
+    power = tf.ones((batch_size, seq_length, d_model))
+    power = tf.cumsum(power, axis=2, exclusive=True) * 2 / tf.cast(d_model, tf.float32)
+
+    # ensemble positional encodings
+    pe_even = tf.sin(pos / tf.pow(10000, power))
+    pe_odd = tf.cos(pos / tf.pow(10000, power))
+
+    return  pe_even, pe_odd
+
+
 if __name__ == '__main__':
     print(tf.__version__)
     temp_k = tf.constant([[10, 0, 0],
@@ -285,3 +311,4 @@ if __name__ == '__main__':
     print(e(x, p, True).shape)
     d = Decoder(8, 6, 4, 100, 0.1)
     print(d(x, x, p, lam, True).shape)
+    get_positional_encodings(tf.ones((3,3,3)))
