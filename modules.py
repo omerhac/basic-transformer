@@ -1,4 +1,6 @@
 import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 def scaled_dot_product_attention(q, k, v, mask=None):
@@ -272,9 +274,78 @@ def get_positional_encodings(x):
 
     # ensemble positional encodings
     pe_even = tf.sin(pos / tf.pow(10000, power))
-    pe_odd = tf.cos(pos / tf.pow(10000, power))
+    pe_odd = tf.cos(pos / tf.pow(10000, power - 1))
 
-    return  pe_even, pe_odd
+    # create even/odd mask
+    even_mask = np.ones((batch_size, seq_length, d_model))
+    even_mask[:, :, 1::2] = 0
+    even_mask = tf.cast(even_mask, tf.float32)
+    odd_mask = np.ones((batch_size, seq_length, d_model))
+    odd_mask[:, :, ::2] = 0
+    odd_mask = tf.cast(odd_mask, tf.float32)
+
+    # insert values
+    pe = odd_mask * pe_odd + even_mask * pe_even
+    return pe
+
+
+class Transformer:
+    """Transformer model"""
+
+    def __init__(self, vocab_size, d_model=512, n_layers=6, attention_heads=8, d_forward_layer=2045, dropout_rate=0.1,
+                 encoder=None, decoder=None):
+        """
+        Init the model with the default parameters from the paper.
+        If a trained encoder / decoder is provided the model will not generate a new one.
+
+        Args:
+            vocab_size: size of model vocabulary
+            d_model: dimension of input embeddings
+            n_layers: number of encoder / decoder layers
+            attention_heads: number of heads for multihead attention. (how many times to split d_model)
+            d_forward_layer: number of units in the second dense layer of each pointwise forward sublayer
+            dropout_rate: dropout rate at each dropout layer
+            encoder: pretrained encoder if available
+            decoder: pretrained decoder if available
+        """
+
+        self._encoder = encoder if encoder else Encoder(d_model, n_layers, attention_heads, d_forward_layer, dropout_rate)
+        self._decoder = decoder if decoder else Decoder(d_model, n_layers, attention_heads, d_forward_layer, dropout_rate)
+        self._d_model = d_model
+        self._attention_heads = attention_heads
+        self._d_forward_layer = d_forward_layer
+        self._dropout_rate = dropout_rate
+        self._vocab_size = vocab_size
+
+        # create embedding layer
+        self._input_embedding = tf.keras.layers.Embedding(vocab_size, d_model)
+
+        # create end linear projection
+        self._linear_projection = tf.keras.layers.Dense(vocab_size, activation='linear')
+
+    def __call__(self, x, prev_dec_output, training):
+        # get positional encodings
+        inp_positional_enc = get_positional_encodings(x)
+        out_positional_enc = get_positional_encodings(prev_dec_output)
+        x = x + inp_positional_enc
+
+        # get masks
+        inp_p_mask = pad_mask(x)
+        out_p_mask = pad_mask(prev_dec_output)  # decoder pad mask over the target inputs
+        la_mask = lookahead_mask(prev_dec_output)
+        dec_combined_mask = tf.maximum(out_p_mask, la_mask)  # combine the lookahead and padding mask for the input of the decoder
+
+        # apply encoder
+        encoder_output = self._encoder(x, inp_p_mask, training=training)
+
+        # apply decoder
+        decoder_output = self._decoder(prev_dec_output, encoder_output, out_p_mask, dec_combined_mask, training=training)
+
+        # apply linear layer and softmax
+        output_logits = self._linear_projection(decoder_output)
+        output_probas = tf.nn.softmax(output_logits)
+
+        return  output_probas
 
 
 if __name__ == '__main__':
@@ -311,4 +382,5 @@ if __name__ == '__main__':
     print(e(x, p, True).shape)
     d = Decoder(8, 6, 4, 100, 0.1)
     print(d(x, x, p, lam, True).shape)
-    get_positional_encodings(tf.ones((3,3,3)))
+    pos_enc = get_positional_encodings(tf.ones((2, 50, 512)))
+    print(pos_enc.shape)
