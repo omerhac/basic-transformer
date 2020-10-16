@@ -39,13 +39,15 @@ def lookahead_mask(x):
     """
     Create mask to prevent the decoder from looking on the yet ungenerated sequence. Input x is assumed to be of shape
     [batch_size, sequence_length] as its before embedding.
+    It is actually going to mask the attention weights matrix.
     """
     seq_length = tf.shape(x)[1]
 
     mask = tf.linalg.band_part(tf.ones((seq_length, seq_length)), 0, -1) - tf.linalg.band_part(tf.ones((seq_length, seq_length)), 0, 0)
     # band(0, -1) is lower triangle part and band(0,0) is diagonal
 
-    return mask
+    # the mask should be the same for every sequence, it doesnt regard which sample it is
+    return mask[tf.newaxis, tf.newaxis, :, :]
 
 
 class MultiHeadAttention:
@@ -203,6 +205,29 @@ class DecoderLayer:
         return s3
 
 
+class Encoder:
+    """Transformer encoder"""
+
+    def __init__(self, d_model, n_layers, attention_heads, d_forward_layer, dropout_rate):
+        self._d_model = d_model
+        self._attention_heads = attention_heads
+        self.d_forward_layer = d_forward_layer
+        self._n_layers = n_layers
+
+        # initiate n_layers encoder layers
+        self._layers = [EncoderLayer(self._d_model, self._attention_heads, self.d_forward_layer, dropout_rate)
+                        for _ in range(n_layers)]
+
+    def __call__(self, x, pad_mask, training):
+        current_layer_output = x
+
+        # move x through all layers
+        for layer in range(self._n_layers):
+            current_layer_output = self._layers[layer](current_layer_output, pad_mask, training=training)
+
+        return current_layer_output
+
+
 if __name__ == '__main__':
     print(tf.__version__)
     temp_k = tf.constant([[10, 0, 0],
@@ -226,7 +251,12 @@ if __name__ == '__main__':
     ffl = FeedForwardLayer(8, 200)
     print(ffl(x).shape)
     enc = EncoderLayer(8, 4, 100, 0.1)
-    pad_mask = pad_mask(tf.linalg.band_part(tf.ones((128, 10)), 0, 0))
-    print(enc(x, pad_mask, True).shape)
+    p = pad_mask(tf.linalg.band_part(tf.ones((128, 10)), 0, 0))
+    print(enc(x, p, True).shape)
     dec = DecoderLayer(8, 4, 100, 0.1)
-    print(dec(x, x, pad_mask, None, True).shape)
+    lam = lookahead_mask(x)
+    print(dec(x, x, p, lam, True).shape)
+    m = lookahead_mask(tf.ones((5,5)))
+    print(m[0, 0, :, :])
+    e = Encoder(8, 6, 4, 100, 0.1)
+    print(e(x, p, True).shape)
