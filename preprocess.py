@@ -7,10 +7,10 @@ import pickle
 MAX_LENGTH = 5
 
 
-def load_dataset():
+def load_dataset(data_dir):
     """Load ted talks portugese to english dataset"""
     examples, metadata = tfds.load('ted_hrlr_translate/pt_to_en', with_info=True,
-                                   as_supervised=True)
+                                   as_supervised=True, data_dir=data_dir)
 
     return examples['train'], examples['validation']
 
@@ -106,7 +106,7 @@ def graph_pad(pt_tokens, en_tokens, padded_length=10):
 
 def get_transformer_datasets(batch_size, max_length, buffer_size):
     """Return a tensorflow datasets of pairs of portugese-english ted translations, tokenized, padded and batched."""
-    train_data, val_data = load_dataset()
+    train_data, val_data = load_dataset(data_dir='data')
 
     # tokenize
     train_data = train_data.map(graph_tokenize)
@@ -126,7 +126,7 @@ def get_transformer_datasets(batch_size, max_length, buffer_size):
     train_data.prefetch(tf.data.experimental.AUTOTUNE)
     val_data = val_data.batch(batch_size)
 
-    return  train_data, val_data
+    return train_data, val_data
 
 
 if __name__ == '__main__':

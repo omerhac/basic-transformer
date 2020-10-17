@@ -276,7 +276,7 @@ def get_positional_encodings(x):
     return tf.cast(pos_encoding, dtype=tf.float32)
 
 
-class Transformer:
+class Transformer(tf.keras.Model):
     """Transformer model"""
 
     def __init__(self, vocab_size, target_vocab_size, d_model=512, n_layers=6, attention_heads=8, d_forward_layer=2045,
@@ -297,6 +297,7 @@ class Transformer:
             decoder: pretrained decoder if available
         """
 
+        super(Transformer, self).__init__()
         self._encoder = encoder if encoder else Encoder(d_model, n_layers, attention_heads, d_forward_layer, dropout_rate)
         self._decoder = decoder if decoder else Decoder(d_model, n_layers, attention_heads, d_forward_layer, dropout_rate)
         self._d_model = d_model
