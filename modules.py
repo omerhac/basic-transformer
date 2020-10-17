@@ -144,8 +144,8 @@ class EncoderLayer:
         self._d_model = d_model
         self._mha_dropout = tf.keras.layers.Dropout(dropout_rate)  # multihead attention dropout
         self._ffl_dropout = tf.keras.layers.Dropout(dropout_rate)  # feed forward dropout
-        self._mha_norm = tf.keras.layers.LayerNormalization()  # multihead attention LayerNorm
-        self._ffl_norm = tf.keras.layers.LayerNormalization()  # feed forward LayerNorm
+        self._mha_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)  # multihead attention LayerNorm
+        self._ffl_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)  # feed forward LayerNorm
 
     def __call__(self, x, pad_mask, training):
         # multihead attention
@@ -177,9 +177,9 @@ class DecoderLayer:
         self._masked_mha_dropout = tf.keras.layers.Dropout(dropout_rate)
         self._encoder_mha_dropout = tf.keras.layers.Dropout(dropout_rate)
         self._ffl_dropout = tf.keras.layers.Dropout(dropout_rate)
-        self._masked_mha_norm = tf.keras.layers.LayerNormalization()
-        self._encoder_mha_norm = tf.keras.layers.LayerNormalization()
-        self._ffl_norm = tf.keras.layers.LayerNormalization()
+        self._masked_mha_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self._encoder_mha_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self._ffl_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
     def __call__(self, prev_dec_output, enc_output, pad_mask, lookahead_mask, training):
         """Decode next output from previous decoder output and the encoder output for this moment"""
@@ -253,40 +253,27 @@ class Decoder:
         return current_layer_output
 
 
+def get_angles(pos, i, d_model):
+    angle_rates = 1 / np.power(10000, (2 * (i//2)) / np.float32(d_model))
+    return pos * angle_rates
+
+
 def get_positional_encodings(x):
-    """Return a tensor with positional encodings for the whole batch"""
-    # get shapes
-    batch_size = tf.shape(x)[0]
-    seq_length = tf.shape(x)[1]
-    d_model = tf.shape(x)[2]
+    d_model = tf.shape(x)[2].numpy()
+    seq_length = tf.shape(x)[1].numpy()
+    angle_rads = get_angles(np.arange(seq_length)[:, np.newaxis],
+                            np.arange(d_model)[np.newaxis, :],
+                            d_model)
 
-    # create positional tensor
-    pos = tf.ones((batch_size, seq_length))
-    pos = tf.cumsum(pos, axis=1, exclusive=True)
+    # apply sin to even indices in the array; 2i
+    angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
 
-    # replicate position to d_model dimensions
-    pos = pos[:, :, tf.newaxis]
-    pos = tf.tile(pos, [1, 1, d_model])
+    # apply cos to odd indices in the array; 2i+1
+    angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
 
-    # create power tensor
-    power = tf.ones((batch_size, seq_length, d_model))
-    power = tf.cumsum(power, axis=2, exclusive=True) * 2 / tf.cast(d_model, tf.float32)
+    pos_encoding = angle_rads[np.newaxis, ...]
 
-    # ensemble positional encodings
-    pe_even = tf.sin(pos / tf.pow(10000, power))
-    pe_odd = tf.cos(pos / tf.pow(10000, power - 1))
-
-    # create even/odd mask
-    even_mask = np.ones((batch_size, seq_length, d_model))
-    even_mask[:, :, 1::2] = 0
-    even_mask = tf.cast(even_mask, tf.float32)
-    odd_mask = np.ones((batch_size, seq_length, d_model))
-    odd_mask[:, :, ::2] = 0
-    odd_mask = tf.cast(odd_mask, tf.float32)
-
-    # insert values
-    pe = odd_mask * pe_odd + even_mask * pe_even
-    return pe
+    return tf.cast(pos_encoding, dtype=tf.float32)
 
 
 class Transformer:
@@ -317,6 +304,8 @@ class Transformer:
         self._d_forward_layer = d_forward_layer
         self._dropout_rate = dropout_rate
         self._vocab_size = vocab_size
+        self._encoder_dropout = tf.keras.layers.Dropout(dropout_rate)
+        self._decoder_dropout = tf.keras.layers.Dropout(dropout_rate)
 
         # create embedding layer
         self._input_embedding = tf.keras.layers.Embedding(vocab_size, d_model)
@@ -325,20 +314,26 @@ class Transformer:
         self._linear_projection = tf.keras.layers.Dense(target_vocab_size, activation='linear')
 
     def __call__(self, x, prev_dec_output, training):
-        # embedd x and previous decoder output
-        x_embedd = self._input_embedding(x)
-        prev_dec_output_embedd = self._input_embedding(prev_dec_output)
+        # embed x and previous decoder output and scale by sqrt d_model
+        x_embedd = self._input_embedding(x) * tf.sqrt(tf.cast(self._d_model, tf.float32))
+        prev_dec_output_embedd = self._input_embedding(prev_dec_output) * tf.sqrt(tf.cast(self._d_model, tf.float32))
 
         # get positional encodings
         inp_positional_enc = get_positional_encodings(x_embedd)
         out_positional_enc = get_positional_encodings(prev_dec_output_embedd)
+
+        # add positional encodings to encoder and decoder inputs
         x_embedd = x_embedd + inp_positional_enc
         prev_dec_output_embedd = prev_dec_output_embedd + out_positional_enc
 
+        # apply dropouts
+        x_embedd = self._encoder_dropout(x_embedd, training=training)
+        prev_dec_output_embedd = self._decoder_dropout(prev_dec_output_embedd, training=training)
+
         # get masks
-        inp_p_mask = pad_mask(x)
+        inp_p_mask = pad_mask(x)  # encoder inputs pad mask
         out_p_mask = pad_mask(prev_dec_output)  # decoder pad mask over the target inputs
-        la_mask = lookahead_mask(prev_dec_output)
+        la_mask = lookahead_mask(prev_dec_output)  # decoder lookahead mask
         dec_combined_mask = tf.maximum(out_p_mask, la_mask)  # combine the lookahead and padding mask for the input of the decoder
 
         # apply encoder
@@ -391,7 +386,8 @@ if __name__ == '__main__':
     print(d(x, x, p, lam, True).shape)
     pos_enc = get_positional_encodings(tf.ones((2, 50, 512)))
     print(pos_enc.shape)
-
+    import pickle
+    pickle.dump(pos_enc.numpy(), open('pos.pkl', 'wb'))
     transformer = Transformer(20000, 30000)
     x = tf.ones((128, 10))
     print(transformer(x, x, True).shape)
