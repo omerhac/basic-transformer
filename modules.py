@@ -1,4 +1,6 @@
 import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 def scaled_dot_product_attention(q, k, v, mask=None):
@@ -39,13 +41,15 @@ def lookahead_mask(x):
     """
     Create mask to prevent the decoder from looking on the yet ungenerated sequence. Input x is assumed to be of shape
     [batch_size, sequence_length] as its before embedding.
+    It is actually going to mask the attention weights matrix.
     """
     seq_length = tf.shape(x)[1]
 
     mask = tf.linalg.band_part(tf.ones((seq_length, seq_length)), 0, -1) - tf.linalg.band_part(tf.ones((seq_length, seq_length)), 0, 0)
     # band(0, -1) is lower triangle part and band(0,0) is diagonal
 
-    return mask
+    # the mask should be the same for every sequence, it doesnt regard which sample it is
+    return mask[tf.newaxis, tf.newaxis, :, :]
 
 
 class MultiHeadAttention:
@@ -140,8 +144,8 @@ class EncoderLayer:
         self._d_model = d_model
         self._mha_dropout = tf.keras.layers.Dropout(dropout_rate)  # multihead attention dropout
         self._ffl_dropout = tf.keras.layers.Dropout(dropout_rate)  # feed forward dropout
-        self._mha_norm = tf.keras.layers.LayerNormalization()  # multihead attention LayerNorm
-        self._ffl_norm = tf.keras.layers.LayerNormalization()  # feed forward LayerNorm
+        self._mha_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)  # multihead attention LayerNorm
+        self._ffl_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)  # feed forward LayerNorm
 
     def __call__(self, x, pad_mask, training):
         # multihead attention
@@ -173,9 +177,9 @@ class DecoderLayer:
         self._masked_mha_dropout = tf.keras.layers.Dropout(dropout_rate)
         self._encoder_mha_dropout = tf.keras.layers.Dropout(dropout_rate)
         self._ffl_dropout = tf.keras.layers.Dropout(dropout_rate)
-        self._masked_mha_norm = tf.keras.layers.LayerNormalization()
-        self._encoder_mha_norm = tf.keras.layers.LayerNormalization()
-        self._ffl_norm = tf.keras.layers.LayerNormalization()
+        self._masked_mha_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self._encoder_mha_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self._ffl_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
     def __call__(self, prev_dec_output, enc_output, pad_mask, lookahead_mask, training):
         """Decode next output from previous decoder output and the encoder output for this moment"""
@@ -203,6 +207,151 @@ class DecoderLayer:
         return s3
 
 
+class Encoder:
+    """Transformer encoder"""
+
+    def __init__(self, d_model, n_layers, attention_heads, d_forward_layer, dropout_rate):
+        self._d_model = d_model
+        self._attention_heads = attention_heads
+        self.d_forward_layer = d_forward_layer
+        self._n_layers = n_layers
+
+        # initiate n_layers encoder layers
+        self._layers = [EncoderLayer(self._d_model, self._attention_heads, self.d_forward_layer, dropout_rate)
+                        for _ in range(n_layers)]
+
+    def __call__(self, x, pad_mask, training):
+        current_layer_output = x
+
+        # move x through all layers
+        for layer in self._layers:
+            current_layer_output = layer(current_layer_output, pad_mask, training=training)
+
+        return current_layer_output
+
+
+class Decoder:
+    """Transformer decoder"""
+
+    def __init__(self, d_model, n_layers, attention_heads, d_forward_layer, dropout_rate):
+        self._d_model = d_model
+        self._attention_heads = attention_heads
+        self.d_forward_layer = d_forward_layer
+        self._n_layers = n_layers
+
+        # initiate n_layers encoder layers
+        self._layers = [DecoderLayer(self._d_model, self._attention_heads, self.d_forward_layer, dropout_rate)
+                        for _ in range(n_layers)]
+
+    def __call__(self, prev_dec_output, enc_output, pad_mask, lookahead_mask, training):
+        current_layer_output = prev_dec_output
+
+        # move the previous decoder output through all the layers. encoder output is injected to every layer
+        for layer in self._layers:
+            current_layer_output = layer(current_layer_output, enc_output, pad_mask, lookahead_mask, training=training)
+
+        return current_layer_output
+
+
+def get_angles(pos, i, d_model):
+    angle_rates = 1 / np.power(10000, (2 * (i//2)) / np.float32(d_model))
+    return pos * angle_rates
+
+
+def get_positional_encodings(x):
+    d_model = tf.shape(x)[2].numpy()
+    seq_length = tf.shape(x)[1].numpy()
+    angle_rads = get_angles(np.arange(seq_length)[:, np.newaxis],
+                            np.arange(d_model)[np.newaxis, :],
+                            d_model)
+
+    # apply sin to even indices in the array; 2i
+    angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
+
+    # apply cos to odd indices in the array; 2i+1
+    angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
+
+    pos_encoding = angle_rads[np.newaxis, ...]
+
+    return tf.cast(pos_encoding, dtype=tf.float32)
+
+
+class Transformer(tf.keras.Model):
+    """Transformer model"""
+
+    def __init__(self, vocab_size, target_vocab_size, d_model=512, n_layers=6, attention_heads=8, d_forward_layer=2045,
+                 dropout_rate=0.1, encoder=None, decoder=None):
+        """
+        Init the model with the default parameters from the paper.
+        If a trained encoder / decoder is provided the model will not generate a new one.
+
+        Args:
+            vocab_size: size of input language vocabulary
+            target_vocab_size: size of output language vocabulary
+            d_model: dimension of input embeddings
+            n_layers: number of encoder / decoder layers
+            attention_heads: number of heads for multihead attention. (how many times to split d_model)
+            d_forward_layer: number of units in the second dense layer of each pointwise forward sublayer
+            dropout_rate: dropout rate at each dropout layer
+            encoder: pretrained encoder if available
+            decoder: pretrained decoder if available
+        """
+
+        super(Transformer, self).__init__()
+        self._encoder = encoder if encoder else Encoder(d_model, n_layers, attention_heads, d_forward_layer, dropout_rate)
+        self._decoder = decoder if decoder else Decoder(d_model, n_layers, attention_heads, d_forward_layer, dropout_rate)
+        self._d_model = d_model
+        self._attention_heads = attention_heads
+        self._d_forward_layer = d_forward_layer
+        self._dropout_rate = dropout_rate
+        self._vocab_size = vocab_size
+        self._encoder_dropout = tf.keras.layers.Dropout(dropout_rate)
+        self._decoder_dropout = tf.keras.layers.Dropout(dropout_rate)
+
+        # create embedding layer
+        self._input_embedding = tf.keras.layers.Embedding(vocab_size, d_model)
+
+        # create end linear projection
+        self._linear_projection = tf.keras.layers.Dense(target_vocab_size, activation='linear')
+
+    def __call__(self, x, prev_dec_output, training):
+        # embed x and previous decoder output and scale by sqrt d_model
+        x_embedd = self._input_embedding(x) * tf.sqrt(tf.cast(self._d_model, tf.float32))
+        prev_dec_output_embedd = self._input_embedding(prev_dec_output) * tf.sqrt(tf.cast(self._d_model, tf.float32))
+
+        # get positional encodings
+        inp_positional_enc = get_positional_encodings(x_embedd)
+        out_positional_enc = get_positional_encodings(prev_dec_output_embedd)
+
+        # add positional encodings to encoder and decoder inputs
+        x_embedd = x_embedd + inp_positional_enc
+        prev_dec_output_embedd = prev_dec_output_embedd + out_positional_enc
+
+        # apply dropouts
+        x_embedd = self._encoder_dropout(x_embedd, training=training)
+        prev_dec_output_embedd = self._decoder_dropout(prev_dec_output_embedd, training=training)
+
+        # get masks
+        inp_p_mask = pad_mask(x)  # encoder inputs pad mask
+        out_p_mask = pad_mask(prev_dec_output)  # decoder input pad mask
+        la_mask = lookahead_mask(prev_dec_output)  # decoder lookahead mask
+        dec_combined_mask = tf.maximum(out_p_mask, la_mask)  # combine the lookahead and padding mask for the input of the decoder
+
+        # apply encoder
+        encoder_output = self._encoder(x_embedd, inp_p_mask, training=training)
+
+        # apply decoder
+        # since the attention keys are from the encoder, tha masking should be with regard to them
+        decoder_output = self._decoder(prev_dec_output_embedd, encoder_output, inp_p_mask,
+                                       dec_combined_mask, training=training)
+
+        # apply linear layer and softmax
+        output_logits = self._linear_projection(decoder_output)
+        output_probas = tf.nn.softmax(output_logits)
+
+        return output_probas
+
+
 if __name__ == '__main__':
     print(tf.__version__)
     temp_k = tf.constant([[10, 0, 0],
@@ -226,7 +375,21 @@ if __name__ == '__main__':
     ffl = FeedForwardLayer(8, 200)
     print(ffl(x).shape)
     enc = EncoderLayer(8, 4, 100, 0.1)
-    pad_mask = pad_mask(tf.linalg.band_part(tf.ones((128, 10)), 0, 0))
-    print(enc(x, pad_mask, True).shape)
+    p = pad_mask(tf.linalg.band_part(tf.ones((128, 10)), 0, 0))
+    print(enc(x, p, True).shape)
     dec = DecoderLayer(8, 4, 100, 0.1)
-    print(dec(x, x, pad_mask, None, True).shape)
+    lam = lookahead_mask(x)
+    print(dec(x, x, p, lam, True).shape)
+    m = lookahead_mask(tf.ones((5,5)))
+    print(m[0, 0, :, :])
+    e = Encoder(8, 6, 4, 100, 0.1)
+    print(e(x, p, True).shape)
+    d = Decoder(8, 6, 4, 100, 0.1)
+    print(d(x, x, p, lam, True).shape)
+    pos_enc = get_positional_encodings(tf.ones((2, 50, 512)))
+    print(pos_enc.shape)
+    import pickle
+    pickle.dump(pos_enc.numpy(), open('pos.pkl', 'wb'))
+    transformer = Transformer(20000, 30000)
+    x = tf.ones((128, 10))
+    print(transformer(x, x, True).shape)
