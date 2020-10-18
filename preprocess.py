@@ -99,13 +99,24 @@ def graph_pad(pt_tokens, en_tokens, padded_length=10):
     return padded_pt_tokens, padded_en_tokens
 
 
-def get_transformer_datasets(batch_size, max_length, buffer_size):
-    """Return a tensorflow datasets of pairs of portugese-english ted translations, tokenized, padded and batched."""
+def get_transformer_datasets(batch_size, max_length, buffer_size,
+                             inp_tokenizer_path='tokenizers/pt_tokenizer.pkl',
+                             tar_tokenizer_path='tokenizers/pt_tokenizer.pkl'):
+    """Return a tensorflow datasets of pairs of portugese-english ted translations, tokenized, padded and batched.
+
+    Args:
+        batch_size: batch size
+        max_length: maximum sequence length. longer sequences will be pruned and shorter ones padded
+        inp_tokenizer_path: path to serialized tokenizer for the input language. must implement text_to_sequences
+        tar_tokenizer_path: path to serialized tokenizer for the target language. must implement text_to_sequences
+    """
+
+    # get dataset
     train_data, val_data = load_dataset(data_dir='data')
 
     # tokenize
-    pt_tokenizer = pickle.load(open('tokenizers/pt_tokenizer.pkl', 'rb'))
-    en_tokenizer = pickle.load(open('tokenizers/en_tokenizer.pkl', 'rb'))
+    pt_tokenizer = pickle.load(open(inp_tokenizer_path, 'rb'))
+    en_tokenizer = pickle.load(open(tar_tokenizer_path, 'rb'))
 
     # helper functions
     tokenizer = lambda x, y: tokenize(x, y, pt_tokenizer, en_tokenizer)
