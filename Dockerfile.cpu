@@ -1,4 +1,4 @@
-FROM python:3.7
+FROM tensorflow/tensorflow:2.1.0-py3
 
 RUN apt -y update
 
@@ -9,4 +9,3 @@ WORKDIR /app
 RUN pip install --upgrade pip
 
 RUN pip install -r requirements-cpu.txt
-
