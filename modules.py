@@ -333,7 +333,7 @@ class Transformer(tf.keras.Model):
 
         # get masks
         inp_p_mask = pad_mask(x)  # encoder inputs pad mask
-        out_p_mask = pad_mask(prev_dec_output)  # decoder pad mask over the target inputs
+        out_p_mask = pad_mask(prev_dec_output)  # decoder input pad mask
         la_mask = lookahead_mask(prev_dec_output)  # decoder lookahead mask
         dec_combined_mask = tf.maximum(out_p_mask, la_mask)  # combine the lookahead and padding mask for the input of the decoder
 
@@ -341,7 +341,8 @@ class Transformer(tf.keras.Model):
         encoder_output = self._encoder(x_embedd, inp_p_mask, training=training)
 
         # apply decoder
-        decoder_output = self._decoder(prev_dec_output_embedd, encoder_output, out_p_mask,
+        # since the attention keys are from the encoder, tha masking should be with regard to them
+        decoder_output = self._decoder(prev_dec_output_embedd, encoder_output, inp_p_mask,
                                        dec_combined_mask, training=training)
 
         # apply linear layer and softmax

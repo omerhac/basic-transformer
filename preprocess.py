@@ -2,12 +2,14 @@ import tensorflow as tf
 import numpy as np
 import tensorflow_datasets as tfds
 import pickle
+import time
 
 # CONSTANTS
 MAX_LENGTH = 5
+AUTO = tf.data.experimental.AUTOTUNE
 
 
-def load_dataset(data_dir):
+def load_dataset(data_dir=None):
     """Load ted talks portugese to english dataset"""
     examples, metadata = tfds.load('ted_hrlr_translate/pt_to_en', with_info=True,
                                    as_supervised=True, data_dir=data_dir)
@@ -21,16 +23,17 @@ def show_data(examples):
         print('Portugese: {}'.format(row[0].decode('utf8')), 'English: {}'.format(row[1].decode('utf8')))
 
 
-def get_tokenizers(corpus, dump_location=None):
+def get_tokenizers(corpus, dump_location=None, num_words=None):
     """Create text tokenizers.
     Args:
         corpus: text corpus to train on
         dump_location: location to save pickled tokenizers, if None the function will retrun them
+        num_words: maximun number of words to keep
     """
 
     # create tokenizers
-    pt_tokenizer = tf.keras.preprocessing.text.Tokenizer()
-    en_tokenizer = tf.keras.preprocessing.text.Tokenizer()
+    pt_tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=num_words)
+    en_tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=num_words)
 
     # fit tokenizers
     pt_tokenizer.fit_on_texts([pt.numpy().decode('utf8') for pt, en in corpus] + ['PTSTART PTEND'])
@@ -64,10 +67,10 @@ def tokenize(pt_sent, en_sent, pt_tokenizer_path='tokenizers/pt_tokenizer.pkl',
     en_tokenizer = pickle.load(open(en_tokenzier_path, 'rb'))
 
     # start and end tokens
-    pt_start_token = pt_tokenizer.texts_to_sequences(['PTSTART'])[0][0]
-    pt_end_token = pt_tokenizer.texts_to_sequences(['PTEND'])[0][0]
-    en_start_token = en_tokenizer.texts_to_sequences(['ENSTART'])[0][0]
-    en_end_token = en_tokenizer.texts_to_sequences(['ENEND'])[0][0]
+    pt_start_token = pt_tokenizer.num_words
+    pt_end_token = pt_tokenizer.num_words + 1
+    en_start_token = en_tokenizer.num_words
+    en_end_token = en_tokenizer.num_words + 1
 
     # tokenize and add start and add tokens
     pt_tokens = [pt_start_token] + pt_tokenizer.texts_to_sequences([pt_sent.numpy().decode('utf8')])[0] + [pt_end_token]
@@ -117,8 +120,8 @@ def get_transformer_datasets(batch_size, max_length, buffer_size):
     val_data = val_data.filter(lambda x, y: filter_max_length(x, y, max_length=max_length))
 
     # pad
-    train_data = train_data.map(lambda x, y: graph_pad(x,y, padded_length=max_length))
-    val_data = val_data.map(lambda x, y: graph_pad(x, y, padded_length=max_length))
+    train_data = train_data.map(lambda x, y: graph_pad(x,y, padded_length=max_length), num_parallel_calls=AUTO)
+    val_data = val_data.map(lambda x, y: graph_pad(x, y, padded_length=max_length), num_parallel_calls=AUTO)
 
     # shuffle, batch and cache
     train_data = train_data.cache()
@@ -129,7 +132,15 @@ def get_transformer_datasets(batch_size, max_length, buffer_size):
     return train_data, val_data
 
 
+def time_dataset(dataset, iterations=5):
+    """Time |iterations| elements from dataset"""
+    curr_time = time.time()
+
+    for _ in dataset.take(iterations):
+        print("Time for element: {}".format(time.time() - curr_time))
+        curr_time = time.time()
+
+
 if __name__ == '__main__':
-    train_data, val_data = get_transformer_datasets(10, 10, 20)
-    for pt, en in train_data.take(1):
-        print(en)
+    get_tokenizers(load_dataset('data')[0] ,dump_location='tokenizers', num_words=8000)
+    load_dataset()[0].padded_batch

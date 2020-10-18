@@ -36,8 +36,8 @@ def train_step(inp, target, model, optimizer):
         optimizer: optimizer to apply gradients
     """
 
-    target_true = target[1:, :]  # the true labels, given for evaluating loss
-    target_inp = target[:-1, :]  # the true labels, shifted right to feed the model as if it were its predictions
+    target_true = target[:, 1:]  # the true labels, given for evaluating loss
+    target_inp = target[:, :-1]  # the true labels, shifted right to feed the model as if it were its predictions
 
     with tf.GradientTape() as tape:
         model_predictions = model(inp, target_inp, training=True)  # forward pass
@@ -54,7 +54,7 @@ def train_step(inp, target, model, optimizer):
 
 def train_transformer(dataset, transformer=None, epochs=20, save_dir='checkpoints'):
     if not transformer:
-        transformer = modules.Transformer(8500, 8000)
+        transformer = modules.Transformer(8002, 8002)
 
     # create optimizer
     optimizer = tf.keras.optimizers.Adam(learning_rate=TransformerSchedule, beta_1=0.9, beta_2=0.98, epsilon=10e-9)
