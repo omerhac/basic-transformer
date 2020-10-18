@@ -1,0 +1,7 @@
+numpy
+tensorflow-gpu==2.1.0
+pandas
+tensorflow-datasets
+matplotlib
+
+
