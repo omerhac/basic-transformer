@@ -51,20 +51,21 @@ def filter_max_length(x, y, max_length=MAX_LENGTH):
     return tf.logical_and(tf.size(x) <= max_length, tf.size(y) <= max_length)
 
 
-def tokenize(pt_sent, en_sent, pt_tokenizer_path='tokenizers/pt_tokenizer.pkl',
-             en_tokenzier_path='tokenizers/en_tokenizer.pkl'):
+def tokenize(pt_sent, en_sent, pt_tokenizer=None, en_tokenizer=None):
     """
     Tokenize
     :param pt_sent: Portugese sentence
     :param en_sent: English sentence
-    :param pt_tokenizer_path: path to pt tokenizer pickle
-    :param en_tokenzier_path: path to english tokenizer pickle
+    :param pt_tokenizer: portugese tokenizer pickle
+    :param en_tokenzier: english tokenizer pickle
     :return: tokenized sentences with start and stop tokens
     """
 
     # load tokenizers
-    pt_tokenizer = pickle.load(open(pt_tokenizer_path, 'rb'))
-    en_tokenizer = pickle.load(open(en_tokenzier_path, 'rb'))
+    if not pt_tokenizer:
+        pt_tokenizer = pickle.load(open('tokenizers/en_tokenizer.pkl', 'rb'))
+    if not en_tokenizer:
+        en_tokenizer = pickle.load(open('tokenizers/pt_tokenizer.pkl', 'rb'))
 
     # start and end tokens
     pt_start_token = pt_tokenizer.num_words
@@ -75,15 +76,6 @@ def tokenize(pt_sent, en_sent, pt_tokenizer_path='tokenizers/pt_tokenizer.pkl',
     # tokenize and add start and add tokens
     pt_tokens = [pt_start_token] + pt_tokenizer.texts_to_sequences([pt_sent.numpy().decode('utf8')])[0] + [pt_end_token]
     en_tokens = [en_start_token] + en_tokenizer.texts_to_sequences([en_sent.numpy().decode('utf8')])[0] + [en_end_token]
-
-    return pt_tokens, en_tokens
-
-
-def graph_tokenize(pt_sent, en_sent):
-    """
-    Graphiphy tokenize method
-    """
-    pt_tokens, en_tokens = tf.py_function(tokenize, [pt_sent, en_sent], Tout=[tf.int64, tf.int64])
 
     return pt_tokens, en_tokens
 
@@ -112,6 +104,20 @@ def get_transformer_datasets(batch_size, max_length, buffer_size):
     train_data, val_data = load_dataset(data_dir='data')
 
     # tokenize
+    pt_tokenizer = pickle.load(open('tokenizers/pt_tokenizer.pkl', 'rb'))
+    en_tokenizer = pickle.load(open('tokenizers/en_tokenizer.pkl', 'rb'))
+
+    # helper functions
+    tokenizer = lambda x, y: tokenize(x, y, pt_tokenizer, en_tokenizer)
+
+    def graph_tokenize(pt_sent, en_sent):
+        """
+        Graphiphy tokenize method
+        """
+        pt_tokens, en_tokens = tf.py_function(tokenizer, [pt_sent, en_sent], Tout=[tf.int64, tf.int64])
+
+        return pt_tokens, en_tokens
+
     train_data = train_data.map(graph_tokenize)
     val_data = val_data.map(graph_tokenize)
 
@@ -142,5 +148,14 @@ def time_dataset(dataset, iterations=5):
 
 
 if __name__ == '__main__':
-    get_tokenizers(load_dataset('data')[0] ,dump_location='tokenizers', num_words=8000)
-    load_dataset()[0].padded_batch
+    train_data = load_dataset('data')[0]
+    t = time.time()
+    for pt, en in train_data.take(5):
+        print(pt)
+    print("simple pulling time: {}".format(time.time() - t))
+    data = get_transformer_datasets(64, 40, 2000)[0]
+    t = time.time()
+    for pt, en in data.take(5):
+        print(pt)
+    print('whole dataset pulling time: {}'.format(time.time() - t))
+
