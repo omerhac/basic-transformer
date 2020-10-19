@@ -1,6 +1,8 @@
-FROM tensorflow:2.1.0-gpu-py3
+FROM tensorflow/tensorflow:2.1.0-gpu-py3
 
 RUN apt -y update
+
+RUN apt install -y python3.7
 
 COPY . /app
 
