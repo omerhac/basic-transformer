@@ -3,6 +3,7 @@ import numpy as np
 import modules
 import preprocess
 
+
 class TransformerSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
     """Learning rate schedule as described in the paper"""
     def __init__(self, d_model, warmup_steps=4000):
@@ -13,7 +14,8 @@ class TransformerSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
 
     def __call__(self, step):
         learning_rate = tf.pow(self._d_model, -0.5) * tf.minimum(
-            tf.pow(step, -0.5), step * tf.pow(self._warmup_steps, -1.5)
+            step**-0.5,
+            step * self._warmup_steps**-1.5
         )
         return learning_rate
 
@@ -47,7 +49,7 @@ def train_step(inp, target, model, optimizer):
 
         # apply gradients
         grads_and_vars = tape.gradient(loss, model.trainable_variables)
-        optimizer.apply_grads(zip(model.trainable_variables, grads_and_vars))
+        optimizer.apply_gradients(zip(grads_and_vars, model.trainable_variables))
 
     return loss
 
@@ -57,7 +59,8 @@ def train_transformer(dataset, transformer=None, epochs=20, save_dir='checkpoint
         transformer = modules.Transformer(8002, 8002)
 
     # create optimizer
-    optimizer = tf.keras.optimizers.Adam(learning_rate=TransformerSchedule, beta_1=0.9, beta_2=0.98, epsilon=10e-9)
+    lr_schedule = TransformerSchedule(512)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule, beta_1=0.9, beta_2=0.98, epsilon=10e-9)
 
     # load checkpoints
     ckpt = tf.train.Checkpoint(transformer=transformer, optimizer=optimizer)
@@ -74,7 +77,7 @@ def train_transformer(dataset, transformer=None, epochs=20, save_dir='checkpoint
         for batch_num, (inp, target) in enumerate(dataset):
             loss = train_step(inp, target, transformer, optimizer)
 
-            print("Batch number {} loss is: {}".format(loss.numpy()))
+            print("Batch number {} loss is: {}".format(batch_num, loss.numpy()))
 
         if epoch % 5 == 0:
             save_path = manager.save()
@@ -82,4 +85,4 @@ def train_transformer(dataset, transformer=None, epochs=20, save_dir='checkpoint
 
 
 if __name__ == '__main__':
-    train_transformer(preprocess.get_transformer_datasets(64, 40, 100)[0])
+    train_transformer(preprocess.get_transformer_datasets(64, 40, 2000)[0])

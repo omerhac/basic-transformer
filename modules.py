@@ -26,7 +26,7 @@ def pad_mask(x):
     """Create a tensor to mask pad tokens. Input x is assumed to be of shape [batch_size, sequence_length]
     as its before embedding.
     """
-
+    x = tf.cast(x, tf.int32)  # for compatibility reasons
     mask = tf.cast(tf.equal(0, x), tf.float32)
 
     # This works because the broadcasting defacto causes the mask to operate on elements of the attention matrix that
@@ -52,12 +52,13 @@ def lookahead_mask(x):
     return mask[tf.newaxis, tf.newaxis, :, :]
 
 
-class MultiHeadAttention:
+class MultiHeadAttention(tf.keras.layers.Layer):
     """Multi Head Attention layer as in MHA(Q,K,V) = concat(attention_head1, attention_head2, .., attention_headn)Wc,
     where attention_headi = attention(QWq, KWk, VWv). Wc, Wq, Wk and Wv are projections to d_c, d_q, d_k and d_v.
     """
 
     def __init__(self, heads, d_model):
+        super(MultiHeadAttention, self).__init__()
         self._d_model = d_model
         self._heads = heads
 
@@ -119,9 +120,10 @@ class MultiHeadAttention:
         return output
 
 
-class FeedForwardLayer:
+class FeedForwardLayer(tf.keras.layers.Layer):
     """Two dense layers with relu on between"""
     def __init__(self, d_model, dff):
+        super(FeedForwardLayer, self).__init__()
         self._f1 = tf.keras.layers.Dense(dff, activation='relu')
         self._f2 = tf.keras.layers.Dense(d_model, activation='linear')
         self._layer = tf.keras.Sequential([
@@ -133,12 +135,13 @@ class FeedForwardLayer:
         return self._layer(X)
 
 
-class EncoderLayer:
+class EncoderLayer(tf.keras.layers.Layer):
     """One encoder layer. Includes multi head attention and feed forwards sublayers. each sublayer output is:
     output = LayerNorm(dropout(sublayer(sublayer_input)) + sublayer_input)
     """
 
     def __init__(self, d_model, attention_heads, d_feed_forward, dropout_rate):
+        super(EncoderLayer, self).__init__()
         self._mha = MultiHeadAttention(attention_heads, d_model)
         self._ff = FeedForwardLayer(d_model, d_feed_forward)
         self._d_model = d_model
@@ -165,12 +168,13 @@ class EncoderLayer:
         return s2
 
 
-class DecoderLayer:
+class DecoderLayer(tf.keras.layers.Layer):
     """One decoder layer. Includes multihead attention over encoder outputs, masked multihead attention over previous
     decoder outputs and feed forward sublayers.
     """
 
     def __init__(self, d_model, attention_heads, d_feed_forward, dropout_rate):
+        super(DecoderLayer, self).__init__()
         self._d_model = d_model
         self._mha = MultiHeadAttention(attention_heads, self._d_model)
         self._ffl = FeedForwardLayer(self._d_model, d_feed_forward)
@@ -207,10 +211,11 @@ class DecoderLayer:
         return s3
 
 
-class Encoder:
+class Encoder(tf.keras.layers.Layer):
     """Transformer encoder"""
 
     def __init__(self, d_model, n_layers, attention_heads, d_forward_layer, dropout_rate):
+        super(Encoder, self).__init__()
         self._d_model = d_model
         self._attention_heads = attention_heads
         self.d_forward_layer = d_forward_layer
@@ -230,10 +235,11 @@ class Encoder:
         return current_layer_output
 
 
-class Decoder:
+class Decoder(tf.keras.layers.Layer):
     """Transformer decoder"""
 
     def __init__(self, d_model, n_layers, attention_heads, d_forward_layer, dropout_rate):
+        super(Decoder, self).__init__()
         self._d_model = d_model
         self._attention_heads = attention_heads
         self.d_forward_layer = d_forward_layer
