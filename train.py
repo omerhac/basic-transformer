@@ -51,7 +51,10 @@ def train_step(inp, target, model, optimizer):
         grads_and_vars = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(grads_and_vars, model.trainable_variables))
 
-    return loss
+        # calculate mertric
+        metric = tf.keras.metrics.sparse_categorical_accuracy(target_true, model_predictions)
+
+    return loss, metric
 
 
 def train_transformer(dataset, transformer=None, epochs=20, save_dir='checkpoints'):
@@ -70,14 +73,21 @@ def train_transformer(dataset, transformer=None, epochs=20, save_dir='checkpoint
     else:
         print("Initializing from scratch.")
 
+    # aggregators
+    losses = []
+    metrics = []
     # train loop
     for epoch in range(epochs):
         print("EPOCH number: {}".format(epoch))
 
         for batch_num, (inp, target) in enumerate(dataset):
-            loss = train_step(inp, target, transformer, optimizer)
+            loss, metric = train_step(inp, target, transformer, optimizer)
+            losses.append(loss.numpy())
+            metrics.append(np.mean(metric.numpy()))
 
-            print("Batch number {} loss is: {}".format(batch_num, loss.numpy()))
+            if batch_num % 50 == 0:
+                print("Batch {}".format(batch_num))
+                print("Average loss {}, Average Accuracy {}".format(np.mean(losses), (np.mean(metrics))))
 
         if epoch % 5 == 0:
             save_path = manager.save()
