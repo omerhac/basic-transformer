@@ -9,9 +9,9 @@ MAX_LENGTH = 5
 AUTO = tf.data.experimental.AUTOTUNE
 
 
-def load_dataset(data_dir=None):
-    """Load ted talks portugese to english dataset"""
-    examples, metadata = tfds.load('ted_hrlr_translate/pt_to_en', with_info=True,
+def load_dataset(dataset_name='ted_hrlr_translate/pt_to_en', data_dir=None):
+    """Load dataset_name from tensorflow datasets. Return train and validation datasets"""
+    examples, metadata = tfds.load(dataset_name, with_info=True,
                                    as_supervised=True, data_dir=data_dir)
 
     return examples['train'], examples['validation']
@@ -32,69 +32,69 @@ def get_tokenizers(corpus, dump_location=None, num_words=None):
     """
 
     # create tokenizers
-    pt_tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=num_words)
-    en_tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=num_words)
+    inp_tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=num_words)
+    tar_tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=num_words)
 
     # fit tokenizers
-    pt_tokenizer.fit_on_texts([pt.numpy().decode('utf8') for pt, en in corpus] + ['PTSTART PTEND'])
-    pt_tokenizer.fit_on_texts([en.numpy().decode('utf8') for pt, en in corpus] + ['ENSTART ENEND'])
+    inp_tokenizer.fit_on_texts([pt.numpy().decode('utf8') for pt, en in corpus])
+    tar_tokenizer.fit_on_texts([en.numpy().decode('utf8') for pt, en in corpus])
 
     if dump_location:
-        pickle.dump(pt_tokenizer, open('{}/pt_tokenizer.pkl'.format(dump_location), 'wb'))
-        pickle.dump(pt_tokenizer, open('{}/en_tokenizer.pkl'.format(dump_location), 'wb'))
+        pickle.dump(inp_tokenizer, open('{}/inp_tokenizer.pkl'.format(dump_location), 'wb'))
+        pickle.dump(tar_tokenizer, open('{}/tar_tokenizer.pkl'.format(dump_location), 'wb'))
 
     else:
-        return pt_tokenizer, en_tokenizer
+        return inp_tokenizer, tar_tokenizer
 
 
 def filter_max_length(x, y, max_length=MAX_LENGTH):
     return tf.logical_and(tf.size(x) <= max_length, tf.size(y) <= max_length)
 
 
-def tokenize(pt_sent, en_sent, pt_tokenizer=None, en_tokenizer=None):
+def tokenize(inp_sent, tar_sent, inp_tokenizer=None, tar_tokenizer=None):
     """
     Tokenize
-    :param pt_sent: Portugese sentence
-    :param en_sent: English sentence
-    :param pt_tokenizer: portugese tokenizer pickle
-    :param en_tokenzier: english tokenizer pickle
+    :param inp_sent: inpyt sentence
+    :param tar_sent: target sentence
+    :param inp_tokenizer: input tokenizer pickle
+    :param tar_tokenizer_tokenzier: target tokenizer pickle
     :return: tokenized sentences with start and stop tokens
     """
 
     # load tokenizers
-    if not pt_tokenizer:
-        pt_tokenizer = pickle.load(open('tokenizers/en_tokenizer.pkl', 'rb'))
-    if not en_tokenizer:
-        en_tokenizer = pickle.load(open('tokenizers/pt_tokenizer.pkl', 'rb'))
+    if not inp_tokenizer:
+        inp_tokenizer = pickle.load(open('tokenizers/en_tokenizer.pkl', 'rb'))
+    if not tar_tokenizer:
+        tar_tokenizer = pickle.load(open('tokenizers/pt_tokenizer.pkl', 'rb'))
 
     # start and end tokens
-    pt_start_token = pt_tokenizer.num_words
-    pt_end_token = pt_tokenizer.num_words + 1
-    en_start_token = en_tokenizer.num_words
-    en_end_token = en_tokenizer.num_words + 1
+    inp_start_token = inp_tokenizer.num_words
+    inp_end_token = inp_tokenizer.num_words + 1
+    tar_start_token = tar_tokenizer.num_words
+    tar_end_token = tar_tokenizer.num_words + 1
 
     # tokenize and add start and add tokens
-    pt_tokens = [pt_start_token] + pt_tokenizer.texts_to_sequences([pt_sent.numpy().decode('utf8')])[0] + [pt_end_token]
-    en_tokens = [en_start_token] + en_tokenizer.texts_to_sequences([en_sent.numpy().decode('utf8')])[0] + [en_end_token]
+    pt_tokens = [inp_start_token] + inp_tokenizer.texts_to_sequences([inp_sent.numpy().decode('utf8')])[0] + [inp_end_token]
+    en_tokens = [tar_start_token] + tar_tokenizer.texts_to_sequences([tar_sent.numpy().decode('utf8')])[0] + [tar_end_token]
 
     return pt_tokens, en_tokens
 
 
-def pad(pt_tokens, en_tokens, padded_length):
+def pad(inp_tokens, tar_tokens, padded_length):
     """Pad the sentences up to padded_length. It is assumed that the length of the sentences is <= padded_length"""
-    padded_en_tokens = list(en_tokens.numpy())
-    padded_pt_tokens = list(pt_tokens.numpy())
+    padded_tar_tokens = list(tar_tokens.numpy())
+    padded_inp_tokens = list(inp_tokens.numpy())
 
     # pad
-    padded_en_tokens = padded_en_tokens + [0 for i in range(padded_length - len(padded_en_tokens))]
-    padded_pt_tokens = padded_pt_tokens + [0 for i in range(padded_length - len(padded_pt_tokens))]
+    padded_tar_tokens = padded_tar_tokens + [0 for i in range(padded_length - len(padded_tar_tokens))]
+    padded_inp_tokens = padded_inp_tokens + [0 for i in range(padded_length - len(padded_inp_tokens))]
 
-    return padded_pt_tokens, padded_en_tokens
+    return padded_inp_tokens, padded_tar_tokens
 
 
-def graph_pad(pt_tokens, en_tokens, padded_length=10):
+def graph_pad(inp_tokens, tar_tokens, padded_length=10):
     """Graphiphy pad method"""
-    padded_pt_tokens, padded_en_tokens = tf.py_function(pad, [pt_tokens, en_tokens, padded_length], Tout=[tf.int64, tf.int64])
+    padded_pt_tokens, padded_en_tokens = tf.py_function(pad, [inp_tokens, tar_tokens, padded_length], Tout=[tf.int64, tf.int64])
 
     return padded_pt_tokens, padded_en_tokens
 
