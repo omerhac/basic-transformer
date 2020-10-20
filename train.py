@@ -69,6 +69,7 @@ def train_transformer(dataset, transformer=None, epochs=20, save_dir='checkpoint
     ckpt = tf.train.Checkpoint(transformer=transformer, optimizer=optimizer)
     manager = tf.train.CheckpointManager(ckpt, save_dir, max_to_keep=10)
     if manager.latest_checkpoint:
+        ckpt.restore(manager.latest_checkpoint)
         print("Restored from {}".format(manager.latest_checkpoint))
     else:
         print("Initializing from scratch.")
@@ -91,8 +92,9 @@ def train_transformer(dataset, transformer=None, epochs=20, save_dir='checkpoint
 
         if epoch % 5 == 0:
             save_path = manager.save()
-            print("Saved model after {} epochs to {}".format(epochs, save_path))
+            print("Saved model after {} epochs to {}".format(epoch, save_path))
 
 
 if __name__ == '__main__':
-    train_transformer(preprocess.get_transformer_datasets(64, 40, 2000)[0])
+    train_transformer(preprocess.get_transformer_datasets(64, 40, 20000)[0],
+                      save_dir='checkpoints/portuguese-english')
