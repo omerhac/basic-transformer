@@ -90,7 +90,7 @@ def pad_sentence(tokens, padded_length):
     """Pad the sentences up to padded_length. It is assumed that the length of the sentences is <= padded_length"""
     padded_tokens = list(tokens.numpy())
     padded_tokens = padded_tokens + [0 for i in range(padded_length - len(padded_tokens))]
-    return  padded_tokens
+    return padded_tokens
 
 
 def pad_example(inp_tokens, tar_tokens, padded_length):

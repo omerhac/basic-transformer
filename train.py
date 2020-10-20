@@ -57,7 +57,7 @@ def train_step(inp, target, model, optimizer):
     return loss, metric
 
 
-def load_checkpoint(transformer, optimizer, load_dir):
+def load_checkpoint(transformer, optimizer=None, load_dir='checkpoints'):
     """Load transformer model and optimizer from load dir"""
     ckpt = tf.train.Checkpoint(transformer=transformer, optimizer=optimizer)
     manager = tf.train.CheckpointManager(ckpt, load_dir, max_to_keep=10)
