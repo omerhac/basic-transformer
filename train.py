@@ -57,22 +57,27 @@ def train_step(inp, target, model, optimizer):
     return loss, metric
 
 
-def train_transformer(dataset, transformer=None, epochs=20, save_dir='checkpoints'):
-    if not transformer:
-        transformer = modules.Transformer(8002, 8002)
-
-    # create optimizer
-    lr_schedule = TransformerSchedule(512)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule, beta_1=0.9, beta_2=0.98, epsilon=10e-9)
-
-    # load checkpoints
+def load_checkpoint(transformer, optimizer, load_dir):
+    """Load transformer model and optimizer from load dir"""
     ckpt = tf.train.Checkpoint(transformer=transformer, optimizer=optimizer)
-    manager = tf.train.CheckpointManager(ckpt, save_dir, max_to_keep=10)
+    manager = tf.train.CheckpointManager(ckpt, load_dir, max_to_keep=10)
     if manager.latest_checkpoint:
         ckpt.restore(manager.latest_checkpoint)
         print("Restored from {}".format(manager.latest_checkpoint))
     else:
         print("Initializing from scratch.")
+
+
+def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoints'):
+    if not transformer:
+        transformer = modules.Transformer(8002, 8002)
+
+    # create optimizer
+    lr_schedule = TransformerSchedule(512)  # d_model
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule, beta_1=0.9, beta_2=0.98, epsilon=10e-9)
+
+    # load checkpoints
+    load_checkpoint(transformer, optimizer, load_dir=load_dir)
 
     # aggregators
     losses = []
