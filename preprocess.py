@@ -51,9 +51,21 @@ def filter_max_length(x, y, max_length=MAX_LENGTH):
     return tf.logical_and(tf.size(x) <= max_length, tf.size(y) <= max_length)
 
 
-def tokenize(inp_sent, tar_sent, inp_tokenizer=None, tar_tokenizer=None):
+def tokenize_sentence(sentence, tokenizer):
+    """Tokenize the sentence based on its tokenizer"""
+    # start and end tokens
+    start_token = tokenizer.num_words
+    end_token = tokenizer.num_words + 1
+
+    # tokenize_example sentence
+    tokens = [start_token] + tokenizer.texts_to_sequences([sentence.numpy().decode('utf8')])[0] + [end_token]
+
+    return tokens
+
+
+def tokenize_example(inp_sent, tar_sent, inp_tokenizer=None, tar_tokenizer=None):
     """
-    Tokenize
+    Tokenize one example from the corpus. As in tokenize both the input and output sentences
     :param inp_sent: inpyt sentence
     :param tar_sent: target sentence
     :param inp_tokenizer: input tokenizer pickle
@@ -63,21 +75,15 @@ def tokenize(inp_sent, tar_sent, inp_tokenizer=None, tar_tokenizer=None):
 
     # load tokenizers
     if not inp_tokenizer:
-        inp_tokenizer = pickle.load(open('tokenizers/en_tokenizer.pkl', 'rb'))
+        inp_tokenizer = pickle.load(open('tokenizers/inp_tokenizer.pkl', 'rb'))
     if not tar_tokenizer:
-        tar_tokenizer = pickle.load(open('tokenizers/pt_tokenizer.pkl', 'rb'))
+        tar_tokenizer = pickle.load(open('tokenizers/out_tokenizer.pkl', 'rb'))
 
-    # start and end tokens
-    inp_start_token = inp_tokenizer.num_words
-    inp_end_token = inp_tokenizer.num_words + 1
-    tar_start_token = tar_tokenizer.num_words
-    tar_end_token = tar_tokenizer.num_words + 1
+    # tokenize_example sentences
+    inp_tokens = tokenize_sentence(inp_sent, inp_tokenizer)
+    tar_tokens = tokenize_sentence(tar_sent, tar_tokenizer)
 
-    # tokenize and add start and add tokens
-    pt_tokens = [inp_start_token] + inp_tokenizer.texts_to_sequences([inp_sent.numpy().decode('utf8')])[0] + [inp_end_token]
-    en_tokens = [tar_start_token] + tar_tokenizer.texts_to_sequences([tar_sent.numpy().decode('utf8')])[0] + [tar_end_token]
-
-    return pt_tokens, en_tokens
+    return inp_tokens, tar_tokens
 
 
 def pad(inp_tokens, tar_tokens, padded_length):
@@ -114,16 +120,16 @@ def get_transformer_datasets(batch_size, max_length, buffer_size,
     # get dataset
     train_data, val_data = load_dataset(data_dir='data')
 
-    # tokenize
+    # tokenize_example
     pt_tokenizer = pickle.load(open(inp_tokenizer_path, 'rb'))
     en_tokenizer = pickle.load(open(tar_tokenizer_path, 'rb'))
 
     # helper functions
-    tokenizer = lambda x, y: tokenize(x, y, pt_tokenizer, en_tokenizer)
+    tokenizer = lambda x, y: tokenize_example(x, y, pt_tokenizer, en_tokenizer)
 
     def graph_tokenize(pt_sent, en_sent):
         """
-        Graphiphy tokenize method
+        Graphiphy tokenize_example method
         """
         pt_tokens, en_tokens = tf.py_function(tokenizer, [pt_sent, en_sent], Tout=[tf.int64, tf.int64])
 
