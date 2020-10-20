@@ -86,21 +86,25 @@ def tokenize_example(inp_sent, tar_sent, inp_tokenizer=None, tar_tokenizer=None)
     return inp_tokens, tar_tokens
 
 
-def pad(inp_tokens, tar_tokens, padded_length):
+def pad_sentence(tokens, padded_length):
     """Pad the sentences up to padded_length. It is assumed that the length of the sentences is <= padded_length"""
-    padded_tar_tokens = list(tar_tokens.numpy())
-    padded_inp_tokens = list(inp_tokens.numpy())
+    padded_tokens = list(tokens.numpy())
+    padded_tokens = padded_tokens + [0 for i in range(padded_length - len(padded_tokens))]
+    return  padded_tokens
 
-    # pad
-    padded_tar_tokens = padded_tar_tokens + [0 for i in range(padded_length - len(padded_tar_tokens))]
-    padded_inp_tokens = padded_inp_tokens + [0 for i in range(padded_length - len(padded_inp_tokens))]
+
+def pad_example(inp_tokens, tar_tokens, padded_length):
+    """Pad the sentences up to padded_length. It is assumed that the length of the sentences is <= padded_length"""
+    # pad_example
+    padded_tar_tokens = pad_sentence(inp_tokens, padded_length)
+    padded_inp_tokens = pad_sentence(tar_tokens, padded_length)
 
     return padded_inp_tokens, padded_tar_tokens
 
 
 def graph_pad(inp_tokens, tar_tokens, padded_length=10):
-    """Graphiphy pad method"""
-    padded_pt_tokens, padded_en_tokens = tf.py_function(pad, [inp_tokens, tar_tokens, padded_length], Tout=[tf.int64, tf.int64])
+    """Graphiphy pad_example method"""
+    padded_pt_tokens, padded_en_tokens = tf.py_function(pad_example, [inp_tokens, tar_tokens, padded_length], Tout=[tf.int64, tf.int64])
 
     return padded_pt_tokens, padded_en_tokens
 
@@ -142,7 +146,7 @@ def get_transformer_datasets(batch_size, max_length, buffer_size,
     train_data = train_data.filter(lambda x, y: filter_max_length(x, y, max_length=max_length))
     val_data = val_data.filter(lambda x, y: filter_max_length(x, y, max_length=max_length))
 
-    # pad
+    # pad_example
     train_data = train_data.map(lambda x, y: graph_pad(x,y, padded_length=max_length), num_parallel_calls=AUTO)
     val_data = val_data.map(lambda x, y: graph_pad(x, y, padded_length=max_length), num_parallel_calls=AUTO)
 

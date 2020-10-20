@@ -23,7 +23,7 @@ def scaled_dot_product_attention(q, k, v, mask=None):
 
 
 def pad_mask(x):
-    """Create a tensor to mask pad tokens. Input x is assumed to be of shape [batch_size, sequence_length]
+    """Create a tensor to mask pad_example tokens. Input x is assumed to be of shape [batch_size, sequence_length]
     as its before embedding.
     """
     x = tf.cast(x, tf.int32)  # for compatibility reasons
@@ -31,7 +31,7 @@ def pad_mask(x):
 
     # This works because the broadcasting defacto causes the mask to operate on elements of the attention matrix that
     # corresponds to the weights each word attends to the padding words.
-    # That is, the broadcasting masks the A[x, pad] of the attention matrix.
+    # That is, the broadcasting masks the A[x, pad_example] of the attention matrix.
     mask = mask[:, tf.newaxis, tf.newaxis, :]
 
     return mask
@@ -338,8 +338,8 @@ class Transformer(tf.keras.Model):
         prev_dec_output_embedd = self._decoder_dropout(prev_dec_output_embedd, training=training)
 
         # get masks
-        inp_p_mask = pad_mask(x)  # encoder inputs pad mask
-        out_p_mask = pad_mask(prev_dec_output)  # decoder input pad mask
+        inp_p_mask = pad_mask(x)  # encoder inputs pad_example mask
+        out_p_mask = pad_mask(prev_dec_output)  # decoder input pad_example mask
         la_mask = lookahead_mask(prev_dec_output)  # decoder lookahead mask
         dec_combined_mask = tf.maximum(out_p_mask, la_mask)  # combine the lookahead and padding mask for the input of the decoder
 
