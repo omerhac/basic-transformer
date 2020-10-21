@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import modules
 import preprocess
+import time
 
 
 class TransformerSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
@@ -88,13 +89,15 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
         print("EPOCH number: {}".format(epoch))
 
         for batch_num, (inp, target) in enumerate(dataset):
+            curr_time = time.time()  # timing the procedure for optimizing performance
             loss, metric = train_step(inp, target, transformer, optimizer)
             losses.append(loss.numpy())
             metrics.append(np.mean(metric.numpy()))
 
             if batch_num % 50 == 0:
                 print("Batch {}".format(batch_num))
-                print("Average loss {}, Average Accuracy {}".format(np.mean(losses), (np.mean(metrics))))
+                print("Average loss {}, Average Accuracy {}. Time taken: {}".format(np.mean(losses), (np.mean(metrics)),
+                                                                                    time.time() - curr_time))
 
         if epoch % 5 == 0:
             save_path = manager.save()
