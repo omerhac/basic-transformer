@@ -36,7 +36,9 @@ def load_checkpoint(transformer, optimizer=None, load_dir='checkpoints'):
 
 def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoints'):
     if not transformer:
-        transformer = modules.Transformer(8002, 8002, 40)
+        transformer = modules.Transformer(8002, 8002, 40,
+                                          d_model=128, d_forward_layer=512,
+                                          attention_heads=8, n_layers=4)
 
     # create optimizer
     lr_schedule = TransformerSchedule(transformer._d_model)  # d_model
@@ -46,8 +48,8 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
     manager = load_checkpoint(transformer, optimizer, load_dir=load_dir)
 
     # aggregators
-    loss_agg = tf.keras.metrics.Mean()
-    accuracy_agg = tf.keras.metrics.SparseCategoricalAccuracy()
+    loss_agg = tf.keras.metrics.Mean(name='mean_loss')
+    accuracy_agg = tf.keras.metrics.SparseCategoricalAccuracy(name='mean_accuracy')
     curr_time = time.time()  # timing the procedure for optimizing performance
 
     # define loss
@@ -57,7 +59,8 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
     def loss_function(y_true, y_pred):
         """Masked categorical crossentropy over target language labels"""
         loss_ = loss_object(y_true, y_pred)
-        mask = modules.pad_mask(y_true)
+        mask = tf.math.logical_not(tf.math.equal(y_true, 0))
+        mask = tf.cast(mask, loss_.dtype)
         loss = loss_ * mask
         return tf.reduce_sum(loss) / tf.reduce_sum(mask)
 
@@ -116,5 +119,5 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
 
 
 if __name__ == '__main__':
-    train_transformer(preprocess.get_transformer_datasets(64, 10, 100)[0],
-                      load_dir='checkpoints/portuguese-english')
+    train_transformer(preprocess.get_transformer_datasets(64, 40, 20000)[0], load_dir='checkpoints/portuguese-english')
+    #train_transformer(preprocess.get_transformer_datasets(10, 10, 100)[0], load_dir='checkpoints/portuguese-english')

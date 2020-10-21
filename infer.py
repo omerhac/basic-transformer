@@ -4,6 +4,7 @@ import pickle
 import modules
 import train
 
+
 def infer(inp_sentence,
           transformer,
           inp_tokenizer_path='tokenizers/inp_tokenizer.pkl',
@@ -53,10 +54,9 @@ def infer(inp_sentence,
 
 
 if __name__ == '__main__':
-    t = modules.Transformer(8002, 8002)
-    train.load_checkpoint(t, load_dir='checkpoints/')
+    t = modules.Transformer(8002, 8002, 40, d_model=128, n_layers=4, d_forward_layer=128, attention_heads=8)
     data = preprocess.load_dataset(data_dir='data')[0]
     for pt, en in data.take(2):
         print(en)
-    print(infer(tf.constant(['going to the'], dtype='string', shape=()), t, inp_tokenizer_path='tokenizers/en_tokenizer.pkl',
-                tar_tokenizer_path='tokenizers/pt_tokenizer.pkl'))
+    print(infer(tf.constant(['going to the'], dtype='string', shape=()), t, inp_tokenizer_path='tokenizers/inp_tokenizer.pkl',
+                tar_tokenizer_path='tokenizers/tar_tokenizer.pkl'))
