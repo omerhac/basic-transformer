@@ -110,8 +110,8 @@ def graph_pad(inp_tokens, tar_tokens, padded_length=10):
 
 
 def get_transformer_datasets(batch_size, max_length, buffer_size,
-                             inp_tokenizer_path='tokenizers/pt_tokenizer.pkl',
-                             tar_tokenizer_path='tokenizers/pt_tokenizer.pkl'):
+                             inp_tokenizer_path='tokenizers/inp_tokenizer.pkl',
+                             tar_tokenizer_path='tokenizers/tar_tokenizer.pkl'):
     """Return a tensorflow datasets of pairs of portugese-english ted translations, tokenized, padded and batched.
 
     Args:
@@ -169,4 +169,4 @@ def time_dataset(dataset, iterations=5):
 
 
 if __name__ == '__main__':
-    time_dataset(get_transformer_datasets(64, 40, 2000)[0])
+    get_tokenizers(load_dataset(data_dir='data')[0], dump_location='tokenizers', num_words=8000)

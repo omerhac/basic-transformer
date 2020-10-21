@@ -112,7 +112,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
         # concatenate and project
         concat_attention = tf.transpose(attention, perm=[0, 2, 1, 3])  # reorder to [batch_size, seq_length, num_heads, depth]
-        concat_attention = tf.reshape(concat_attention, (batch_size, -1, self._d_model))  # concat to [batch_size, seq_length, d_model]
+        concat_attention = tf.reshape(concat_attention, [batch_size, -1, self._d_model])  # concat to [batch_size, seq_length, d_model]
 
         output = self._wc(concat_attention)
 

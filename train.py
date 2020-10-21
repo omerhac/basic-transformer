@@ -21,15 +21,6 @@ class TransformerSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
         return learning_rate
 
 
-@tf.function
-def loss_function(y_true, y_pred):
-    """Masked categorical crossentropy over target language labels"""
-    loss_ = tf.keras.losses.SparseCategoricalCrossentropy(reduction='none')(y_true, y_pred)
-    mask = modules.pad_mask(y_true)
-    loss = loss_ * mask
-    return tf.reduce_sum(loss) / tf.reduce_sum(mask)
-
-
 def load_checkpoint(transformer, optimizer=None, load_dir='checkpoints'):
     """Load transformer model and optimizer from load dir. Return checkpoints manager"""
     ckpt = tf.train.Checkpoint(transformer=transformer, optimizer=optimizer)
@@ -48,12 +39,20 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
         transformer = modules.Transformer(8002, 8002, 40)
 
     # create optimizer
-    lr_schedule = TransformerSchedule(512)  # d_model
+    lr_schedule = TransformerSchedule(transformer._d_model)  # d_model
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule, beta_1=0.9, beta_2=0.98, epsilon=10e-9)
 
     # load checkpoints
     manager = load_checkpoint(transformer, optimizer, load_dir=load_dir)
 
+    # define loss
+    @tf.function
+    def loss_function(y_true, y_pred):
+        """Masked categorical crossentropy over target language labels"""
+        loss_ = tf.keras.losses.SparseCategoricalCrossentropy(reduction='none')(y_true, y_pred)
+        mask = modules.pad_mask(y_true)
+        loss = loss_ * mask
+        return tf.reduce_sum(loss) / tf.reduce_sum(mask)
     # def train step
     train_sig = (
         tf.TensorSpec((None, None), dtype=tf.int64),
@@ -114,5 +113,5 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
 
 
 if __name__ == '__main__':
-    train_transformer(preprocess.get_transformer_datasets(10, 10, 100)[0],
+    train_transformer(preprocess.get_transformer_datasets(64, 10, 2000)[0],
                       load_dir='checkpoints/portuguese-english')
