@@ -29,6 +29,7 @@ def loss_function(y_true, y_pred):
     return tf.reduce_sum(loss) / tf.reduce_sum(mask)
 
 
+@tf.function
 def train_step(inp, target, model, optimizer):
     """Make one train step
     Args:
@@ -70,7 +71,7 @@ def load_checkpoint(transformer, optimizer=None, load_dir='checkpoints'):
 
 def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoints'):
     if not transformer:
-        transformer = modules.Transformer(8002, 8002)
+        transformer = modules.Transformer(8002, 8002, 40)
 
     # create optimizer
     lr_schedule = TransformerSchedule(512)  # d_model
@@ -101,5 +102,5 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
 
 
 if __name__ == '__main__':
-    train_transformer(preprocess.get_transformer_datasets(64, 40, 20000)[0],
-                      save_dir='checkpoints/portuguese-english')
+    train_transformer(preprocess.get_transformer_datasets(10, 10, 100)[0],
+                      load_dir='checkpoints/portuguese-english')

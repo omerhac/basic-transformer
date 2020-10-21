@@ -1,6 +1,5 @@
 import tensorflow as tf
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 def scaled_dot_product_attention(q, k, v, mask=None):
@@ -264,10 +263,14 @@ def get_angles(pos, i, d_model):
     return pos * angle_rates
 
 
-def get_positional_encodings(x):
-    d_model = tf.shape(x)[2].numpy()
-    seq_length = tf.shape(x)[1].numpy()
-    angle_rads = get_angles(np.arange(seq_length)[:, np.newaxis],
+def get_positional_encodings(d_model, max_seq_length):
+    """Get a matrix of shape [1, max_seq_length, d_model] of positional encodings.
+    They apply the same for each example hence the 1 row on first dim.
+    Args:
+        d_model: dimensionality of input embeddings
+        max_seq_length: maximum length of the input sequence
+    """
+    angle_rads = get_angles(np.arange(max_seq_length)[:, np.newaxis],
                             np.arange(d_model)[np.newaxis, :],
                             d_model)
 
@@ -285,7 +288,7 @@ def get_positional_encodings(x):
 class Transformer(tf.keras.Model):
     """Transformer model"""
 
-    def __init__(self, vocab_size, target_vocab_size, d_model=512, n_layers=6, attention_heads=8, d_forward_layer=2045,
+    def __init__(self, vocab_size, target_vocab_size, max_seq_length, d_model=512, n_layers=6, attention_heads=8, d_forward_layer=2045,
                  dropout_rate=0.1, encoder=None, decoder=None):
         """
         Init the model with the default parameters from the paper.
@@ -294,6 +297,7 @@ class Transformer(tf.keras.Model):
         Args:
             vocab_size: size of input language vocabulary
             target_vocab_size: size of output language vocabulary
+            max_seq_length: maximu allowed length of input sequence
             d_model: dimension of input embeddings
             n_layers: number of encoder / decoder layers
             attention_heads: number of heads for multihead attention. (how many times to split d_model)
@@ -313,6 +317,7 @@ class Transformer(tf.keras.Model):
         self._vocab_size = vocab_size
         self._encoder_dropout = tf.keras.layers.Dropout(dropout_rate)
         self._decoder_dropout = tf.keras.layers.Dropout(dropout_rate)
+        self._pos_encoding = get_positional_encodings(self._d_model, max_seq_length)
 
         # create embedding layer
         self._input_embedding = tf.keras.layers.Embedding(vocab_size, d_model)
@@ -326,8 +331,10 @@ class Transformer(tf.keras.Model):
         prev_dec_output_embedd = self._input_embedding(prev_dec_output) * tf.sqrt(tf.cast(self._d_model, tf.float32))
 
         # get positional encodings
-        inp_positional_enc = get_positional_encodings(x_embedd)
-        out_positional_enc = get_positional_encodings(prev_dec_output_embedd)
+        inp_seq_length = tf.shape(x)[1]  # input and target can have different lengths because of target shifting and on
+        tar_seq_length = tf.shape(prev_dec_output)[1]  # inferring
+        inp_positional_enc = self._pos_encoding[:, :inp_seq_length, :]
+        out_positional_enc = self._pos_encoding[:, :tar_seq_length, :]
 
         # add positional encodings to encoder and decoder inputs
         x_embedd = x_embedd + inp_positional_enc
@@ -360,42 +367,7 @@ class Transformer(tf.keras.Model):
 
 if __name__ == '__main__':
     print(tf.__version__)
-    temp_k = tf.constant([[10, 0, 0],
-                          [0, 10, 0],
-                          [0, 0, 10],
-                          [0, 0, 10]], dtype=tf.float32)  # (4, 3)
-
-    temp_v = tf.constant([[1, 0],
-                          [10, 0],
-                          [100, 5],
-                          [1000, 6]], dtype=tf.float32)  # (4, 2)
-
-    # This `query` aligns with the second `key`,
-    # so the second `value` is returned.
-    temp_q = tf.constant([[0, 10, 0]], dtype=tf.float32)  # (1, 3)
-    a = scaled_dot_product_attention(temp_q, temp_k, temp_v)
-    print(a)
-    x = tf.random.uniform([128, 10, 8])
-    mha = MultiHeadAttention(4, 8)
-    print(mha(x, x, x).shape)
-    ffl = FeedForwardLayer(8, 200)
-    print(ffl(x).shape)
-    enc = EncoderLayer(8, 4, 100, 0.1)
-    p = pad_mask(tf.linalg.band_part(tf.ones((128, 10)), 0, 0))
-    print(enc(x, p, True).shape)
-    dec = DecoderLayer(8, 4, 100, 0.1)
-    lam = lookahead_mask(x)
-    print(dec(x, x, p, lam, True).shape)
-    m = lookahead_mask(tf.ones((5,5)))
-    print(m[0, 0, :, :])
-    e = Encoder(8, 6, 4, 100, 0.1)
-    print(e(x, p, True).shape)
-    d = Decoder(8, 6, 4, 100, 0.1)
-    print(d(x, x, p, lam, True).shape)
-    pos_enc = get_positional_encodings(tf.ones((2, 50, 512)))
-    print(pos_enc.shape)
-    import pickle
-    pickle.dump(pos_enc.numpy(), open('pos.pkl', 'wb'))
-    transformer = Transformer(20000, 30000)
-    x = tf.ones((128, 10))
-    print(transformer(x, x, True).shape)
+    a = tf.constant([
+        [1, 0, 1],
+    ])
+    print(lookahead_mask(a))
