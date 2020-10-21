@@ -60,7 +60,7 @@ def train_step(inp, target, model, optimizer):
 
 
 def load_checkpoint(transformer, optimizer=None, load_dir='checkpoints'):
-    """Load transformer model and optimizer from load dir"""
+    """Load transformer model and optimizer from load dir. Return checkpoints manager"""
     ckpt = tf.train.Checkpoint(transformer=transformer, optimizer=optimizer)
     manager = tf.train.CheckpointManager(ckpt, load_dir, max_to_keep=10)
     if manager.latest_checkpoint:
@@ -68,6 +68,8 @@ def load_checkpoint(transformer, optimizer=None, load_dir='checkpoints'):
         print("Restored from {}".format(manager.latest_checkpoint))
     else:
         print("Initializing from scratch.")
+
+    return  manager
 
 
 def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoints'):
@@ -79,17 +81,18 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule, beta_1=0.9, beta_2=0.98, epsilon=10e-9)
 
     # load checkpoints
-    load_checkpoint(transformer, optimizer, load_dir=load_dir)
+    manager = load_checkpoint(transformer, optimizer, load_dir=load_dir)
 
     # aggregators
     losses = []
     metrics = []
+    curr_time = time.time()  # timing the procedure for optimizing performance
+
     # train loop
     for epoch in range(epochs):
         print("EPOCH number: {}".format(epoch))
 
         for batch_num, (inp, target) in enumerate(dataset):
-            curr_time = time.time()  # timing the procedure for optimizing performance
             loss, metric = train_step(inp, target, transformer, optimizer)
             losses.append(loss.numpy())
             metrics.append(np.mean(metric.numpy()))
@@ -98,6 +101,7 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
                 print("Batch {}".format(batch_num))
                 print("Average loss {}, Average Accuracy {}. Time taken: {}".format(np.mean(losses), (np.mean(metrics)),
                                                                                     time.time() - curr_time))
+                curr_time = time.time()
 
         if epoch % 5 == 0:
             save_path = manager.save()
