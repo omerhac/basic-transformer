@@ -30,35 +30,6 @@ def loss_function(y_true, y_pred):
     return tf.reduce_sum(loss) / tf.reduce_sum(mask)
 
 
-@tf.function
-def train_step(inp, target, model, optimizer):
-    """Make one train step
-    Args:
-        inp: input language tokens
-        target: target language tokens
-        model: transformer model to train
-        optimizer: optimizer to apply gradients
-    """
-
-    target_true = target[:, 1:]  # the true labels, given for evaluating loss
-    target_inp = target[:, :-1]  # the true labels, shifted right to feed the model as if it were its predictions
-
-    with tf.GradientTape() as tape:
-        model_predictions = model(inp, target_inp, training=True)  # forward pass
-
-        # calculate loss
-        loss = loss_function(target_true, model_predictions)
-
-        # apply gradients
-        grads_and_vars = tape.gradient(loss, model.trainable_variables)
-        optimizer.apply_gradients(zip(grads_and_vars, model.trainable_variables))
-
-        # calculate mertric
-        metric = tf.keras.metrics.sparse_categorical_accuracy(target_true, model_predictions)
-
-    return loss, metric
-
-
 def load_checkpoint(transformer, optimizer=None, load_dir='checkpoints'):
     """Load transformer model and optimizer from load dir. Return checkpoints manager"""
     ckpt = tf.train.Checkpoint(transformer=transformer, optimizer=optimizer)
@@ -69,7 +40,7 @@ def load_checkpoint(transformer, optimizer=None, load_dir='checkpoints'):
     else:
         print("Initializing from scratch.")
 
-    return  manager
+    return manager
 
 
 def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoints'):
@@ -83,6 +54,38 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
     # load checkpoints
     manager = load_checkpoint(transformer, optimizer, load_dir=load_dir)
 
+    # def train step
+    train_sig = (
+        tf.TensorSpec((None, None), dtype=tf.int64),
+        tf.TensorSpec((None, None), dtype=tf.int64)
+    )
+
+    @tf.function(input_signature=train_sig)
+    def train_step(encoder_input, target):
+        """Make one train step
+        Args:
+            encoder_input: input language tokens
+            target: target language tokens
+        """
+
+        target_true = target[:, 1:]  # the true labels, given for evaluating loss
+        target_inp = target[:, :-1]  # the true labels, shifted right to feed the model as if it were its predictions
+
+        with tf.GradientTape() as tape:
+            model_predictions = transformer(encoder_input, target_inp, training=True)  # forward pass
+
+            # calculate loss
+            loss = loss_function(target_true, model_predictions)
+
+            # apply gradients
+            grads_and_vars = tape.gradient(loss, transformer.trainable_variables)
+            optimizer.apply_gradients(zip(grads_and_vars, transformer.trainable_variables))
+
+            # calculate metric
+            metric = tf.keras.metrics.sparse_categorical_accuracy(target_true, model_predictions)
+
+        return loss, metric
+
     # aggregators
     losses = []
     metrics = []
@@ -92,8 +95,10 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
     for epoch in range(epochs):
         print("EPOCH number: {}".format(epoch))
 
-        for batch_num, (inp, target) in enumerate(dataset):
-            loss, metric = train_step(inp, target, transformer, optimizer)
+        for batch_num, (inp, tar) in enumerate(dataset):
+            loss, metric = train_step(inp, tar)
+
+            # append values
             losses.append(loss.numpy())
             metrics.append(np.mean(metric.numpy()))
 
