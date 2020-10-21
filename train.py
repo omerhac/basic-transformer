@@ -45,14 +45,22 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
     # load checkpoints
     manager = load_checkpoint(transformer, optimizer, load_dir=load_dir)
 
+    # aggregators
+    loss_agg = tf.keras.metrics.Mean()
+    accuracy_agg = tf.keras.metrics.SparseCategoricalAccuracy()
+    curr_time = time.time()  # timing the procedure for optimizing performance
+
     # define loss
+    loss_object = tf.keras.losses.SparseCategoricalCrossentropy(reduction='none')
+
     @tf.function
     def loss_function(y_true, y_pred):
         """Masked categorical crossentropy over target language labels"""
-        loss_ = tf.keras.losses.SparseCategoricalCrossentropy(reduction='none')(y_true, y_pred)
+        loss_ = loss_object(y_true, y_pred)
         mask = modules.pad_mask(y_true)
         loss = loss_ * mask
         return tf.reduce_sum(loss) / tf.reduce_sum(mask)
+
     # def train step
     train_sig = (
         tf.TensorSpec((None, None), dtype=tf.int64),
@@ -80,30 +88,25 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
             grads_and_vars = tape.gradient(loss, transformer.trainable_variables)
             optimizer.apply_gradients(zip(grads_and_vars, transformer.trainable_variables))
 
-            # calculate metric
-            metric = tf.keras.metrics.sparse_categorical_accuracy(target_true, model_predictions)
+            # aggregate accuracy
+            accuracy_agg(target_true, model_predictions)
 
-        return loss, metric
-
-    # aggregators
-    losses = []
-    metrics = []
-    curr_time = time.time()  # timing the procedure for optimizing performance
+        return loss
 
     # train loop
     for epoch in range(epochs):
         print("EPOCH number: {}".format(epoch))
 
         for batch_num, (inp, tar) in enumerate(dataset):
-            loss, metric = train_step(inp, tar)
+            loss = train_step(inp, tar)
 
             # append values
-            losses.append(loss.numpy())
-            metrics.append(np.mean(metric.numpy()))
+            loss_agg(loss)
 
             if batch_num % 50 == 0:
                 print("Batch {}".format(batch_num))
-                print("Average loss {}, Average Accuracy {}. Time taken: {}".format(np.mean(losses), (np.mean(metrics)),
+                print("Average loss {}, Average Accuracy {}. Time taken: {}".format(loss_agg.result(),
+                                                                                    accuracy_agg.result(),
                                                                                     time.time() - curr_time))
                 curr_time = time.time()
 
@@ -113,5 +116,5 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
 
 
 if __name__ == '__main__':
-    train_transformer(preprocess.get_transformer_datasets(64, 10, 2000)[0],
+    train_transformer(preprocess.get_transformer_datasets(64, 10, 100)[0],
                       load_dir='checkpoints/portuguese-english')
