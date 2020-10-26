@@ -40,7 +40,6 @@ def infer(inp_sentence,
 
         # add prediction to output sentence
         out_tokens = tf.concat([out_tokens, [predicted_next_token]], axis=1)
-        print(out_tokens)
 
         # finish if end of sentence token is generated
         if predicted_next_token.numpy() == tar_tokenizer.num_words + 1:
@@ -54,9 +53,11 @@ def infer(inp_sentence,
 
 
 if __name__ == '__main__':
-    t = modules.Transformer(8002, 8002, 40, d_model=128, n_layers=4, d_forward_layer=128, attention_heads=8)
+    t = modules.Transformer(8002, 8002, 40, d_model=128, n_layers=4, d_forward_layer=512, attention_heads=8)
     data = preprocess.load_dataset(data_dir='data')[0]
+    train.load_checkpoint(t, tf.keras.optimizers.Adam(), load_dir='checkpoints/portuguese-english')
     for pt, en in data.take(2):
+        print(pt)
         print(en)
-    print(infer(tf.constant(['going to the'], dtype='string', shape=()), t, inp_tokenizer_path='tokenizers/inp_tokenizer.pkl',
+    print(infer(tf.constant(['mas e se estes fatores fossem ativos'], dtype='string', shape=()), t, inp_tokenizer_path='tokenizers/inp_tokenizer.pkl',
                 tar_tokenizer_path='tokenizers/tar_tokenizer.pkl'))

@@ -3,6 +3,7 @@ import numpy as np
 import modules
 import preprocess
 import time
+import pickle
 
 
 class TransformerSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
@@ -35,8 +36,17 @@ def load_checkpoint(transformer, optimizer=None, load_dir='checkpoints'):
 
 
 def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoints'):
+    """Train the transformer on dataset. Load and save checkpoints to load_dir"""
+    # builds default transformer if its not given
     if not transformer:
-        transformer = modules.Transformer(8002, 8002, 40,
+        # get tokenizers num_words
+        inp_tokenier = pickle.load(open('tokenizers/inp_tokenizer.pkl', 'rb'))
+        tar_tokenier = pickle.load(open('tokenizers/tar_tokenizer.pkl', 'rb'))
+        inp_vocab_size = inp_tokenier.num_words + 2  # the +2 is for SOS and EOS tokens
+        tar_vocab_size = tar_tokenier.num_words + 2
+
+        # build transformer
+        transformer = modules.Transformer(inp_vocab_size, tar_vocab_size, 40,
                                           d_model=128, d_forward_layer=512,
                                           attention_heads=8, n_layers=4)
 
