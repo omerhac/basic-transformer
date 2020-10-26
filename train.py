@@ -66,8 +66,8 @@ def train_transformer(dataset, transformer=None, epochs=20, load_dir='checkpoint
 
     # def train step
     train_sig = (
-        tf.TensorSpec((None, None), dtype=tf.int64),
-        tf.TensorSpec((None, None), dtype=tf.int64)
+        tf.TensorSpec(shape=(None, None), dtype=tf.int64),
+        tf.TensorSpec(shape=(None, None), dtype=tf.int64)
     )
 
     @tf.function(input_signature=train_sig)

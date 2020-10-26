@@ -2,14 +2,11 @@
 <project version="4">
   <component name="PublishConfigData" remoteFilesAllowedToDisappearOnAutoupload="false" showNewOnTargetInSync="false">
     <serverData>
-      <paths name="paperspace@74.82.29.189:22">
+      <paths name="paperspace@basic-transformer">
         <serverdata>
           <mappings>
             <mapping deploy="/" local="$PROJECT_DIR$" web="/" />
           </mappings>
-          <excludedPaths>
-            <excludedPath path="/data" />
-          </excludedPaths>
         </serverdata>
       </paths>
     </serverData>
